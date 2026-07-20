@@ -12,8 +12,15 @@ JsonDocument calDoc;    // last successfully parsed calendar payload
 JsonDocument wxDoc;     // last successfully parsed weather payload
 String gUpdated;        // "HH:MM" of last successful fetch
 String gMessage;        // special message from a "MSG: ..." calendar event
+
+// Countdown targets from "CNT: name / YYYY-MM-DD" calendar events
+String gCntName[4];
+String gCntDate[4];
+int gCntDays[4];
+int gCntCount = 0;
 String gNews[3];        // latest headlines
 String gNewsLabel;      // which feed they came from ("Tech", "Japan", ...)
+String gNewsDebug;      // last fetch outcome, shown on-screen when empty
 int gNewsCount = 0;
 int gNewsSlot = -1;
 int64_t gLastNewsMs = 0;
@@ -75,6 +82,27 @@ int batteryPercent() {
   return constrain(pct, 0, 100);
 }
 
+uint32_t utf8At(const String& s, int i, int* len) {
+  uint8_t c = s[i];
+  if (c < 0x80)            { *len = 1; return c; }
+  if ((c & 0xE0) == 0xC0)  { *len = 2; return ((uint32_t)(c & 0x1F) << 6)  | (s[i+1] & 0x3F); }
+  if ((c & 0xF0) == 0xE0)  { *len = 3; return ((uint32_t)(c & 0x0F) << 12) | ((uint32_t)(s[i+1] & 0x3F) << 6) | (s[i+2] & 0x3F); }
+  *len = 4;
+  return ((uint32_t)(c & 0x07) << 18) | ((uint32_t)(s[i+1] & 0x3F) << 12) |
+         ((uint32_t)(s[i+2] & 0x3F) << 6) | (s[i+3] & 0x3F);
+}
+
+// Codepoints the DejaVu/Japanese fonts can't draw (emoji & friends)
+bool isEmojiCp(uint32_t cp) {
+  return (cp >= 0x1F000)                ||  // emoji, symbols, flags
+         (cp >= 0x2100 && cp <= 0x2BFF) ||  // arrows, dingbats, misc technical
+         (cp >= 0xFE00 && cp <= 0xFE0F) ||  // variation selectors
+         cp == 0x200D || cp == 0x20E3   ||  // ZWJ, keycap combiner
+         cp == 0x203C || cp == 0x2049   ||
+         cp == 0x3030 || cp == 0x303D   ||
+         cp == 0x3297 || cp == 0x3299;
+}
+
 // Remove emoji and other symbols the DejaVu fonts can't draw
 String stripEmoji(const String& s) {
   String out;
@@ -93,15 +121,7 @@ String stripEmoji(const String& s) {
     for (size_t j = 1; j < len; j++) cp = (cp << 6) | (s[i + j] & 0x3F);
     i += len;
 
-    bool emoji =
-      (cp >= 0x1F000)                 ||  // emoji, symbols, flags
-      (cp >= 0x2100 && cp <= 0x2BFF)  ||  // arrows, dingbats, misc technical (watch, clock, squares...)
-      (cp >= 0xFE00 && cp <= 0xFE0F)  ||  // variation selectors
-      cp == 0x200D || cp == 0x20E3    ||  // ZWJ, keycap combiner
-      cp == 0x203C || cp == 0x2049    ||  // !! and !? emoji
-      cp == 0x3030 || cp == 0x303D    ||  // CJK emoji symbols
-      cp == 0x3297 || cp == 0x3299;
-    if (emoji) continue;
+    if (isEmojiCp(cp)) continue;
 
     if (cp < 0x80) out += (char)cp;
     else if (cp < 0x800) {
@@ -184,6 +204,24 @@ void showMessage(const String& msg) {
   d.waitDisplay();
 }
 
+// True if rain probability reaches 50% between now and this evening
+bool umbrellaNeeded() {
+  JsonArray hp = wxDoc["hourly"]["precipitation_probability"];
+  if (hp.isNull()) return false;
+  int from = localHour();
+  int to = (from > 21) ? 23 : 21;
+  for (int i = from; i <= to && i < (int)hp.size(); i++) {
+    if ((int)(hp[i] | 0) >= 50) return true;
+  }
+  return false;
+}
+
+void drawUmbrella(int cx, int cy, int r, uint32_t col) {
+  d.fillArc(cx, cy, 0, r, 180, 360, col);                       // canopy
+  d.fillRect(cx - 1, cy, 3, r, col);                            // stem
+  d.fillArc(cx - r / 4, cy + r, r / 4 - 1, r / 4 + 1, 0, 180, col);  // hook
+}
+
 // Shared page header: big title left (+ optional grey subtitle beside it),
 // battery + updated time right, divider
 void drawHeader(const String& title, const String& subtitle = "") {
@@ -209,6 +247,10 @@ void drawHeader(const String& title, const String& subtitle = "") {
   }
   d.setTextDatum(top_left);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
+
+  if (umbrellaNeeded()) {
+    drawUmbrella(W - 215, 36, 16, TFT_BLACK);   // rain expected today
+  }
 
   d.fillRect(30, 100, W - 60, 3, TFT_BLACK);
 }

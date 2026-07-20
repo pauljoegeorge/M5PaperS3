@@ -101,7 +101,19 @@ void drawHourlyChart(int x, int y, int w, int h) {
   d.setFont(&fonts::DejaVu18);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
   d.drawString("temperature", x, y);
-  d.drawString("rain %", x, by0 - 26);
+
+  // Rain stats for caption / highlighting
+  int pmax = 0, pmaxIdx = -1, rainFirst = -1, rainLast = -1;
+  for (int i = 0; i < n; i++) {
+    int p = hp[i] | 0;
+    if (p > pmax) { pmax = p; pmaxIdx = i; }
+    if (p >= 30) { if (rainFirst < 0) rainFirst = i; rainLast = i; }
+  }
+  String rainCap;
+  if (pmax < 20)            rainCap = "rain: not expected";
+  else if (rainFirst >= 0)  rainCap = "rain " + String(rainFirst) + ":00-" + String(rainLast + 1) + ":00";
+  else                      rainCap = "rain: slight chance";
+  d.drawString(rainCap, x, by0 - 26);
 
   // temp curve (3 passes for thickness)
   int px = -1, py = -1;
@@ -118,23 +130,52 @@ void drawHourlyChart(int x, int y, int w, int h) {
   drawDegString(String(tmax, 0) + "°", x + plotW + 8, cy0 - 8, TFT_DARKGREY);
   drawDegString(String(tmin, 0) + "°", x + plotW + 8, cy0 + ch - 10, TFT_DARKGREY);
 
-  // rain probability bars
+  // rain probability bars: black = likely (>=50%), grey = possible;
+  // dashed line marks the 50% threshold
   int bw = plotW / n;
+  int y50 = by0 + bh / 2;
+  for (int xd = x; xd < x + plotW; xd += 12) {
+    d.drawFastHLine(xd, y50, 6, TFT_DARKGREY);
+  }
   for (int i = 0; i < n; i++) {
     int p = hp[i] | 0;
     int bhh = p * bh / 100;
     if (bhh > 0) {
-      d.fillRect(x + i * plotW / n, by0 + bh - bhh, bw - 2, bhh, TFT_DARKGREY);
+      d.fillRect(x + i * plotW / n, by0 + bh - bhh, bw - 2, bhh,
+                 p >= 50 ? TFT_BLACK : TFT_DARKGREY);
     }
   }
   d.drawFastHLine(x, by0 + bh, plotW, TFT_BLACK);
-  d.drawString("100", x + plotW + 8, by0 - 4);
+  d.drawString("50", x + plotW + 8, y50 - 9);
+
+  // label the peak bar with its value
+  if (pmax >= 20 && pmaxIdx >= 0) {
+    int ly = by0 + bh - pmax * bh / 100 - 22;
+    if (ly < by0 - 22) ly = by0 - 22;
+    d.setTextDatum(top_center);
+    d.drawString(String(pmax) + "%", x + pmaxIdx * plotW / n + bw / 2, ly);
+    d.setTextDatum(top_left);
+  }
 
   // hour labels
   for (int hh = 0; hh <= 18; hh += 6) {
     d.drawString(hh < 10 ? "0" + String(hh) : String(hh), x + hh * plotW / 24, by0 + bh + 8);
   }
   d.setTextColor(TFT_BLACK, TFT_WHITE);
+}
+
+// Classic Japanese weather-app feature: is today a laundry-drying day?
+const char* laundryVerdict() {
+  JsonArray hp = wxDoc["hourly"]["precipitation_probability"];
+  int rain = 0;
+  for (int i = 9; i <= 17 && i < (int)hp.size(); i++) {
+    int p = hp[i] | 0;
+    if (p > rain) rain = p;
+  }
+  int hum = wxDoc["current"]["relative_humidity_2m"] | 50;
+  if (rain >= 40)              return "laundry: dry inside today";
+  if (rain <= 20 && hum < 65)  return "laundry: great drying day!";
+  return "laundry: outside is OK";
 }
 
 void renderWeather() {
@@ -177,6 +218,7 @@ void renderWeather() {
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
   d.drawString("rain " + String(rainMax) + "%   humidity " + String(hum) + "%   wind " + String(wind, 0) + " km/h", 30, 395);
   d.drawString("sunrise " + sunrise + "   sunset " + sunset, 30, 427);
+  d.drawString(laundryVerdict(), 30, 459);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 
   // ---- Right panel: hourly chart ----

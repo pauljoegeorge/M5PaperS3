@@ -22,11 +22,29 @@ void wifiOff() {
 
 String httpGET(const String& url) {
   HTTPClient http;
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setTimeout(15000);
-  http.begin(url);
-  int code = http.GET();
-  Serial.printf("GET -> %d (%s...)\n", code, url.substring(0, 60).c_str());
+
+  String currentUrl = url;
+  int code = -1;
+  const char* headerKeys[] = {"Location"};
+
+  for (int redirectCount = 0; redirectCount < 4; redirectCount++) {
+    http.begin(currentUrl);
+    http.collectHeaders(headerKeys, 1);
+    code = http.GET();
+    Serial.printf("GET -> %d (%s...)\n", code, currentUrl.substring(0, 60).c_str());
+
+    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+      String newUrl = http.header("Location");
+      http.end();
+      if (newUrl.length() > 0) {
+        currentUrl = newUrl;
+        continue;
+      }
+    }
+    break;
+  }
+
   String body = (code == HTTP_CODE_OK) ? http.getString() : "";
   http.end();
   return body;
@@ -54,35 +72,124 @@ String decodeEntities(String s) {
   return s;
 }
 
-// Pull up to 2 not-yet-shown <item><title>s out of an RSS feed.
-// Returns false if the feed had nothing new (current headlines are kept).
-bool parseNews(const String& rss) {
-  String fresh[2];
-  int freshCount = 0;
-  int pos = 0;
-  while (freshCount < 2) {
-    int item = rss.indexOf("<item>", pos);
-    if (item < 0) break;
-    int t0 = rss.indexOf("<title>", item);
-    int t1 = rss.indexOf("</title>", t0);
-    if (t0 < 0 || t1 < 0) break;
-    String t = rss.substring(t0 + 7, t1);
-    if (t.startsWith("<![CDATA[")) {
-      t = t.substring(9);
-      t.replace("]]>", "");
+String cleanTitle(String t) {
+  if (t.startsWith("<![CDATA[")) {
+    t = t.substring(9);
+    t.replace("]]>", "");
+  }
+  t = stripEmoji(decodeEntities(t));
+  t.replace("\n", " ");
+  int dash = t.lastIndexOf(" - ");
+  if (dash > 10) t = t.substring(0, dash);    // drop " - Source Name" suffix
+  t.trim();
+  return t;
+}
+
+// A write-only Stream that extracts <item><title>s from RSS flowing
+// through it. Used with HTTPClient::writeToStream so the library handles
+// chunked encoding / connection details; memory stays ~6 KB even though
+// Google News feeds run 150-300 KB.
+class RssTitleSink : public Stream {
+ public:
+  static const int MAX_TITLES = 16;
+  String titles[MAX_TITLES];
+  int count = 0;
+
+  size_t write(uint8_t c) override { feed((const char*)&c, 1); return 1; }
+  size_t write(const uint8_t* data, size_t len) override {
+    feed((const char*)data, len);
+    return len;   // claim it all so the transfer keeps going
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+
+ private:
+  String buf;
+  bool inItem = false;
+
+  void feed(const char* data, size_t len) {
+    if (count >= MAX_TITLES) return;      // got enough, ignore the rest
+    buf.concat(data, len);
+    while (count < MAX_TITLES) {
+      if (!inItem) {
+        int ip = buf.indexOf("<item>");
+        if (ip < 0) break;
+        buf.remove(0, ip + 6);
+        inItem = true;
+      }
+      int t0 = buf.indexOf("<title>");
+      if (t0 < 0) break;
+      int t1 = buf.indexOf("</title>", t0);
+      if (t1 < 0) break;                  // title incomplete, wait for more data
+      titles[count++] = buf.substring(t0 + 7, t1);
+      buf.remove(0, t1 + 8);
+      inItem = false;
     }
-    t = stripEmoji(decodeEntities(t));
-    t.replace("\n", " ");
-    int dash = t.lastIndexOf(" - ");
-    if (dash > 10) t = t.substring(0, dash);    // drop " - Source Name" suffix
-    t.trim();
-    pos = t1;
-    if (!t.length() || newsSeen(t)) continue;   // skip already-shown stories
-    fresh[freshCount++] = t;
+    // cap the buffer, keeping a tail in case a marker straddles chunks
+    if (!inItem && buf.length() > 6000) buf.remove(0, buf.length() - 64);
+  }
+};
+
+int fetchRssTitles(const char* url, String* titles, int maxTitles) {
+  HTTPClient http;
+  http.setTimeout(15000);
+
+  String currentUrl = url;
+  int code = -1;
+  const char* headerKeys[] = {"Location"};
+
+  for (int redirectCount = 0; redirectCount < 4; redirectCount++) {
+    http.begin(currentUrl);
+    http.collectHeaders(headerKeys, 1);
+    code = http.GET();
+    Serial.printf("GET -> %d (rss: %s...)\n", code, currentUrl.substring(0, 45).c_str());
+
+    if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+      String newUrl = http.header("Location");
+      http.end();
+      if (newUrl.length() > 0) {
+        currentUrl = newUrl;
+        continue;
+      }
+    }
+    break;
   }
 
+  if (code != HTTP_CODE_OK) {
+    gNewsDebug = "http error " + String(code);
+    http.end();
+    return -1;
+  }
+
+  RssTitleSink sink;
+  int written = http.writeToStream(&sink);   // streams the whole body through us
+  http.end();
+
+  int n = (sink.count < maxTitles) ? sink.count : maxTitles;
+  for (int i = 0; i < n; i++) titles[i] = sink.titles[i];
+  Serial.printf("RSS titles read: %d (stream ret %d)\n", n, written);
+  if (n == 0) gNewsDebug = "http 200, stream " + String(written) + ", 0 titles";
+  return n;
+}
+
+// Refresh gNews with up to 2 not-yet-shown headlines.
+// Returns false if the fetch failed or the feed had nothing new.
+bool updateNews(const char* url) {
+  String raw[16];
+  int n = fetchRssTitles(url, raw, 16);
+  if (n <= 0) return false;
+
+  String fresh[2];
+  int freshCount = 0;
+  for (int i = 0; i < n && freshCount < 2; i++) {
+    String t = cleanTitle(raw[i]);
+    if (!t.length() || newsSeen(t)) continue;
+    fresh[freshCount++] = t;
+  }
   if (freshCount == 0) {
     Serial.println("News: nothing new, keeping current headlines");
+    gNewsDebug = String(n) + " titles, all seen";
     return false;
   }
   gNewsCount = freshCount;
@@ -90,6 +197,7 @@ bool parseNews(const String& rss) {
     gNews[i] = fresh[i];
     rememberNews(fresh[i]);
   }
+  gNewsDebug = "";
   Serial.printf("News headlines: %d new\n", gNewsCount);
   return true;
 }
@@ -203,7 +311,7 @@ void fetchWotd() {
       }
     }
     // must fit two lines on screen
-    if (jp.length() && en.length() && utf8Len(jp) <= 50 && en.length() <= 110) {
+    if (jp.length() && en.length() && utf8Len(jp) <= 44 && en.length() <= 110) {
       usage = jp;
       usageEn = en;
       usageRuby = (const char*)(r["transcriptions"][0]["text"] | "");
@@ -291,18 +399,79 @@ bool refreshData() {
       gUpdated = calDoc["fetched"] | "";
       calOk = true;
 
-      // Pull out a special message event ("MSG: ..." title) and
-      // hide it from the event list
+      // Pull out special events (hidden from the event list):
+      //   "MSG: text"                  -> message page
+      //   "CNT: name / YYYY-MM-DD"     -> countdown page
       gMessage = "";
+      gCntCount = 0;
       JsonArray evs = calDoc["events"];
-      for (size_t i = 0; i < evs.size(); i++) {
+      for (size_t i = 0; i < evs.size();) {
         String t = evs[i]["title"] | "";
-        if (t.startsWith("MSG:")) {
+        if (t.startsWith("MSG:") && !gMessage.length()) {
           t.remove(0, 4);
           t.trim();
-          gMessage = stripEmoji(t);
+          gMessage = t;
           evs.remove(i);
-          break;
+          continue;
+        }
+        if (t.startsWith("CNT:") && gCntCount < 4) {
+          String spec = t.substring(4);
+          int slash = spec.lastIndexOf('/');
+          int yy, mm, dd2;
+          if (slash > 0 &&
+              sscanf(spec.substring(slash + 1).c_str(), "%d-%d-%d", &yy, &mm, &dd2) == 3) {
+            String name = spec.substring(0, slash);
+            name.trim();
+            struct tm tmv = {};
+            tmv.tm_year = yy - 1900;
+            tmv.tm_mon  = mm - 1;
+            tmv.tm_mday = dd2;
+            tmv.tm_hour = 12;                       // midday avoids DST/rounding edges
+            int target = (int)(mktime(&tmv) / 86400);
+            int days = target - wotdToday();        // local day index
+            if (days >= 0 && name.length()) {
+              gCntName[gCntCount] = name;
+              gCntDate[gCntCount] = spec.substring(slash + 1);
+              gCntDate[gCntCount].trim();
+              gCntDays[gCntCount] = days;
+              gCntCount++;
+            }
+          }
+          evs.remove(i);
+          continue;
+        }
+        i++;
+      }
+      // Preferred source: "countdowns" array from the Apps Script —
+      // future events titled "CNT: name" placed on their actual date.
+      for (JsonObject c : calDoc["countdowns"].as<JsonArray>()) {
+        if (gCntCount >= 4) break;
+        String name = c["name"] | "";
+        String date = c["date"] | "";
+        int yy, mm, dd2;
+        if (!name.length() ||
+            sscanf(date.c_str(), "%d-%d-%d", &yy, &mm, &dd2) != 3) continue;
+        struct tm tmv = {};
+        tmv.tm_year = yy - 1900;
+        tmv.tm_mon  = mm - 1;
+        tmv.tm_mday = dd2;
+        tmv.tm_hour = 12;
+        int days = (int)(mktime(&tmv) / 86400) - wotdToday();
+        if (days < 0) continue;
+        gCntName[gCntCount] = name;
+        gCntDate[gCntCount] = date;
+        gCntDays[gCntCount] = days;
+        gCntCount++;
+      }
+
+      // sort countdowns soonest-first
+      for (int a = 0; a < gCntCount; a++) {
+        for (int b = a + 1; b < gCntCount; b++) {
+          if (gCntDays[b] < gCntDays[a]) {
+            std::swap(gCntDays[a], gCntDays[b]);
+            std::swap(gCntName[a], gCntName[b]);
+            std::swap(gCntDate[a], gCntDate[b]);
+          }
         }
       }
     } else {
@@ -324,8 +493,7 @@ bool refreshData() {
   int slot = currentNewsSlot();
   if (gNewsCount == 0 || slot != gNewsSlot ||
       nowMs() - gLastNewsMs >= (int64_t)NEWS_REFRESH_MIN * 60000) {
-    body = httpGET(NEWS_SLOTS[slot].url);
-    if (body.length() && parseNews(body)) {
+    if (updateNews(NEWS_SLOTS[slot].url)) {
       gLastNewsMs = nowMs();
       gNewsSlot   = slot;
       gNewsLabel  = NEWS_SLOTS[slot].label;

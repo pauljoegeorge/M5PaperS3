@@ -19,18 +19,18 @@ struct NewsSlot { int startHour; const char* label; const char* url; };
 // Must be sorted by startHour; the last slot wraps past midnight
 static const NewsSlot NEWS_SLOTS[] = {
   {  5, "Tech",
-     "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en" },
+     "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGRqTVhZU0JXVnVMVlZUR2dKVlV5Z0FQAQ?hl=en-US&gl=US&ceid=US:en" },
   { 12, "Japan",
-     "https://news.google.com/rss/headlines/section/geo/Japan?hl=en-US&gl=US&ceid=US:en" },
+     "https://news.google.com/rss/search?q=Japan&hl=en-US&gl=US&ceid=US:en" },
   { 17, "World",
-     "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en" },
+     "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JXVnVMVlZUR2dKVlV5Z0FQAQ?hl=en-US&gl=US&ceid=US:en" },
   { 21, "India",
      "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en" },
 };
 static const int NEWS_SLOT_COUNT = sizeof(NEWS_SLOTS) / sizeof(NEWS_SLOTS[0]);
 
 // ---- Quiet hours (no slideshow flips at night; touch still works) ----
-static const int QUIET_START_HOUR = 23;
+static const int QUIET_START_HOUR = 0;    // midnight
 static const int QUIET_END_HOUR   = 6;
 
 // ---- Earthquake alerts (P2PQuake public API, covers JMA reports) ----
@@ -40,4 +40,4 @@ static const int   EQ_WINDOW_MIN = 60;    // ...that happened within the last N 
 // ---- Timing ----
 static const int REFRESH_MIN   = 30;    // re-fetch calendar + weather (minutes)
 static const int SLIDE_MIN     = 5;     // auto-flip between pages (minutes)
-static const int TOUCH_POLL_MS = 250;   // touch poll interval; larger = better battery
+static const int TOUCH_POLL_MS = 400;   // touch poll interval; larger = better battery

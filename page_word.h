@@ -22,22 +22,9 @@ int wrapJP(const String& s, int maxW, String* lines, int maxLines) {
 }
 
 // ---- Furigana (ruby) rendering ----
-// Tatoeba transcriptions look like: "彼[かれ]は 学生[がくせい]です。"
-// A [reading] applies to the run of kanji immediately before it.
-
-uint32_t utf8At(const String& s, int i, int* len) {
-  uint8_t c = s[i];
-  if (c < 0x80)            { *len = 1; return c; }
-  if ((c & 0xE0) == 0xC0)  { *len = 2; return ((uint32_t)(c & 0x1F) << 6)  | (s[i+1] & 0x3F); }
-  if ((c & 0xF0) == 0xE0)  { *len = 3; return ((uint32_t)(c & 0x0F) << 12) | ((uint32_t)(s[i+1] & 0x3F) << 6) | (s[i+2] & 0x3F); }
-  *len = 4;
-  return ((uint32_t)(c & 0x07) << 18) | ((uint32_t)(s[i+1] & 0x3F) << 12) |
-         ((uint32_t)(s[i+2] & 0x3F) << 6) | (s[i+3] & 0x3F);
-}
-
-bool isKanjiCp(uint32_t cp) {
-  return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) || cp == 0x3005;
-}
+// Tatoeba transcriptions look like: "[腕|うで]を[前後|ぜん|ご]に[振|ふ]りなさい。"
+// Bracket groups hold the kanji and its reading(s), pipe-separated;
+// multiple pipes are per-character readings (joined for display).
 
 struct RubySeg { String base; String ruby; };
 
@@ -50,22 +37,21 @@ int parseRuby(const String& s, RubySeg* segs, int maxSegs) {
     if (c == '[') {
       int close = s.indexOf(']', i);
       if (close < 0) break;
-      String ruby = s.substring(i + 1, close);
-      // peel the trailing kanji run off `plain` — that's what the ruby covers
-      int cut = plain.length();
-      while (cut > 0) {
-        int p = cut - 1;
-        while (p > 0 && ((uint8_t)plain[p] & 0xC0) == 0x80) p--;
-        int cl;
-        if (!isKanjiCp(utf8At(plain, p, &cl))) break;
-        cut = p;
+      String grp = s.substring(i + 1, close);
+      int bar = grp.indexOf('|');
+      if (bar > 0) {
+        if (plain.length() && n < maxSegs) { segs[n++] = { plain, "" }; }
+        plain = "";
+        String base = grp.substring(0, bar);
+        String ruby = grp.substring(bar + 1);
+        ruby.replace("|", "");          // join per-character readings
+        if (n < maxSegs) segs[n++] = { base, ruby };
+      } else {
+        plain += grp;                   // bracket without reading: keep text
       }
-      if (cut > 0 && n < maxSegs) segs[n++] = { plain.substring(0, cut), "" };
-      if (cut < (int)plain.length() && n < maxSegs) segs[n++] = { plain.substring(cut), ruby };
-      plain = "";
       i = close + 1;
     } else if (c == ' ') {
-      i++;                      // Tatoeba word separators — drop them
+      i++;                              // word separators — drop them
     } else {
       int len;
       utf8At(s, i, &len);
@@ -77,12 +63,19 @@ int parseRuby(const String& s, RubySeg* segs, int maxSegs) {
   return n;
 }
 
-// Draw furigana text with wrapping. Returns number of lines used.
-int drawRubyText(const String& rubyStr, int x0, int y0, int maxW, int maxLines) {
+// Layout (and optionally draw) furigana text with wrapping.
+// Returns the total number of lines the text NEEDS (not capped), so callers
+// can measure with draw=false, pick a size, then draw for real.
+int rubyText(const String& rubyStr, int x0, int y0, int maxW, int maxLines,
+             bool small, bool draw) {
   RubySeg segs[24];
   int ns = parseRuby(rubyStr, segs, 24);
-  const int rubyH = 20;    // furigana row height
-  const int lineH = 58;    // furigana + base line
+  const lgfx::IFont* baseF = small ? (const lgfx::IFont*)&fonts::lgfxJapanGothic_24
+                                   : (const lgfx::IFont*)&fonts::lgfxJapanGothic_28;
+  const lgfx::IFont* rubyF = small ? (const lgfx::IFont*)&fonts::lgfxJapanGothic_12
+                                   : (const lgfx::IFont*)&fonts::lgfxJapanGothic_16;
+  const int rubyH = small ? 15 : 20;   // furigana row height
+  const int lineH = small ? 45 : 58;   // furigana + base line
   int x = x0, line = 0;
 
   for (int si = 0; si < ns; si++) {
@@ -101,11 +94,11 @@ int drawRubyText(const String& rubyStr, int x0, int y0, int maxW, int maxLines) 
         ci += len;
       }
 
-      d.setFont(&fonts::lgfxJapanGothic_28);
+      d.setFont(baseF);
       int bw = d.textWidth(base);
       int rw = 0;
       if (ruby.length()) {
-        d.setFont(&fonts::lgfxJapanGothic_16);
+        d.setFont(rubyF);
         rw = d.textWidth(ruby);
       }
       int w = (bw > rw) ? bw : rw;
@@ -113,17 +106,18 @@ int drawRubyText(const String& rubyStr, int x0, int y0, int maxW, int maxLines) 
       if (x + w > x0 + maxW && x > x0) {
         line++;
         x = x0;
-        if (line >= maxLines) return maxLines;
       }
 
-      if (ruby.length()) {
-        d.setFont(&fonts::lgfxJapanGothic_16);
-        d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-        d.drawString(ruby, x + (w - rw) / 2, y0 + line * lineH);
-        d.setTextColor(TFT_BLACK, TFT_WHITE);
+      if (draw && line < maxLines) {
+        if (ruby.length()) {
+          d.setFont(rubyF);
+          d.setTextColor(TFT_DARKGREY, TFT_WHITE);
+          d.drawString(ruby, x + (w - rw) / 2, y0 + line * lineH);
+          d.setTextColor(TFT_BLACK, TFT_WHITE);
+        }
+        d.setFont(baseF);
+        d.drawString(base, x + (w - bw) / 2, y0 + line * lineH + rubyH);
       }
-      d.setFont(&fonts::lgfxJapanGothic_28);
-      d.drawString(base, x + (w - bw) / 2, y0 + line * lineH + rubyH);
       x += w;
 
       if (segs[si].ruby.length()) break;   // atomic segment done
@@ -170,27 +164,39 @@ void renderWord() {
 
   d.fillRect(40, yAfter, W - 80, 1, TFT_LIGHTGREY);
 
-  // Usage example: furigana version when available, plain otherwise
+  // Usage example: furigana version when available, plain otherwise.
+  // Measure first; if it needs more than 2 big lines, render smaller with
+  // 3 lines so the sentence is always complete.
   int yU = yAfter + 20;
-  int usedLines;
+  bool cramped = false;
   if (gWotdUsageRuby.length()) {
-    usedLines = drawRubyText(gWotdUsageRuby, 40, yU, W - 100, 2);
-    yU += usedLines * 58 + 10;
+    int need = rubyText(gWotdUsageRuby, 40, yU, W - 100, 9, false, false);
+    if (need <= 2) {
+      rubyText(gWotdUsageRuby, 40, yU, W - 100, 2, false, true);
+      yU += need * 58 + 10;
+    } else {
+      need = rubyText(gWotdUsageRuby, 40, yU, W - 100, 9, true, false);
+      rubyText(gWotdUsageRuby, 40, yU, W - 100, 3, true, true);
+      yU += ((need < 3) ? need : 3) * 45 + 8;
+      cramped = true;
+    }
   } else {
     d.setFont(&fonts::lgfxJapanGothic_28);
-    String jp[2];
-    int nj = wrapJP(gWotdUsage, W - 100, jp, 2);
+    String jp[3];
+    int nj = wrapJP(gWotdUsage, W - 100, jp, 3);
     for (int i = 0; i < nj; i++) d.drawString(jp[i], 40, yU + i * 42);
     yU += nj * 42 + 10;
+    cramped = (nj > 2);
   }
 
-  // Translation
-  d.setFont(&fonts::DejaVu24);
+  // Translation (smaller when the Japanese needed 3 lines)
+  d.setFont(cramped ? &fonts::DejaVu18 : &fonts::DejaVu24);
+  int enStep = cramped ? 26 : 32;
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
   String en[2];
   int ne = wrapMessage(gWotdUsageEn, W - 100, en, 2);
   for (int i = 0; i < ne; i++) {
-    d.drawString(en[i], 40, yU + i * 32);
+    d.drawString(en[i], 40, yU + i * enStep);
   }
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 

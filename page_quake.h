@@ -40,7 +40,7 @@ void renderQuake() {
   d.fillRect(60, 310, W - 120, 2, TFT_BLACK);
 
   // Epicenter (Japanese) + time
-  d.setFont(&fonts::lgfxJapanGothic_36);
+  d.setFont(&fonts::lgfxJapanGothic_40);   // reuse a size other pages already link
   d.drawString(gQuakePlace, 80, 345);
 
   d.setFont(&fonts::DejaVu24);

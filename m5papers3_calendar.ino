@@ -29,13 +29,15 @@
 #include "page_weather.h"
 #include "page_news.h"
 #include "page_word.h"
+#include "page_countdown.h"
 #include "page_message.h"
 #include "page_quake.h"
 
-enum Page { PAGE_CALENDAR, PAGE_WEATHER, PAGE_NEWS, PAGE_WORD, PAGE_MESSAGE, PAGE_QUAKE };
+enum Page { PAGE_CALENDAR, PAGE_WEATHER, PAGE_NEWS, PAGE_WORD,
+            PAGE_CNT, PAGE_MESSAGE, PAGE_QUAKE };
 
 Page currentPage = PAGE_CALENDAR;
-Page pageOrder[6];
+Page pageOrder[7];
 int  pageCount = 0;
 
 int64_t lastFetchMs = 0;
@@ -49,8 +51,9 @@ void buildPageList() {
   if (gQuakeActive)       pageOrder[pageCount++] = PAGE_QUAKE;
   pageOrder[pageCount++] = PAGE_CALENDAR;
   pageOrder[pageCount++] = PAGE_WEATHER;
-  if (gNewsCount)         pageOrder[pageCount++] = PAGE_NEWS;
+  pageOrder[pageCount++] = PAGE_NEWS;   // always shown; page explains itself when empty
   pageOrder[pageCount++] = PAGE_WORD;
+  if (gCntCount)          pageOrder[pageCount++] = PAGE_CNT;
   if (gMessage.length())  pageOrder[pageCount++] = PAGE_MESSAGE;
 }
 
@@ -70,6 +73,7 @@ void renderCurrentPage() {
     case PAGE_WEATHER:  renderWeather();  break;
     case PAGE_NEWS:     renderNews();     break;
     case PAGE_WORD:     renderWord();     break;
+    case PAGE_CNT:      renderCountdown(); break;
     case PAGE_MESSAGE:  renderMessage();  break;
     case PAGE_QUAKE:    renderQuake();    break;
   }
@@ -107,7 +111,12 @@ void setup() {
 void loop() {
   // Nap briefly, then wake to poll touch and check timers
   esp_sleep_enable_timer_wakeup((uint64_t)TOUCH_POLL_MS * 1000ULL);
-  esp_light_sleep_start();
+  esp_err_t slept = esp_light_sleep_start();
+  if (slept != ESP_OK) {
+    static int rejected = 0;
+    if (++rejected <= 5) Serial.printf("light sleep rejected: %d\n", slept);
+    delay(TOUCH_POLL_MS);   // fall back so the loop doesn't spin at full speed
+  }
 
   // ---- Touch: tap = switch page, long press = refresh now ----
   lgfx::touch_point_t tp;
@@ -124,6 +133,19 @@ void loop() {
     }
     renderCurrentPage();
     return;
+  }
+
+  // ---- Quiet hours: true deep sleep until morning (screen holds image,
+  //      touch inactive; device reboots and refreshes at QUIET_END_HOUR) ----
+  if (quietHours() && time(nullptr) > 1600000000) {   // only with a synced clock
+    int minsNow  = (int)((time(nullptr) / 60 + (time_t)TZ_OFFSET_HOURS * 60) % 1440);
+    int sleepMin = QUIET_END_HOUR * 60 - minsNow;
+    if (sleepMin <= 0) sleepMin += 1440;
+    Serial.printf("Night: deep sleeping %d min\n", sleepMin);
+    d.waitDisplay();
+    WiFi.mode(WIFI_OFF);
+    esp_sleep_enable_timer_wakeup((uint64_t)sleepMin * 60ULL * 1000000ULL);
+    esp_deep_sleep_start();
   }
 
   int64_t t = nowMs();

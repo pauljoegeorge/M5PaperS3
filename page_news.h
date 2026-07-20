@@ -6,7 +6,11 @@ void renderNews() {
   drawHeader("News", gNewsLabel);   // e.g. "News · Tech"
 
   if (gNewsCount == 0) {
-    drawCentered("No headlines yet", H / 2 - 20, &fonts::DejaVu40);
+    drawCentered("No headlines yet", H / 2 - 40, &fonts::DejaVu40);
+    d.setTextColor(TFT_DARKGREY, TFT_WHITE);
+    drawCentered(gNewsDebug.length() ? gNewsDebug : "fetch not attempted yet",
+                 H / 2 + 30, &fonts::DejaVu24);
+    d.setTextColor(TFT_BLACK, TFT_WHITE);
     d.display();
     return;
   }

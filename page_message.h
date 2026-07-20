@@ -29,12 +29,13 @@ void renderMessage() {
   sparkle(W - 138, H - 140, 11, TFT_DARKGREY);
 
   // Message text: pick the biggest font that fits in 3 lines
+  String msg = stripEmoji(gMessage);
   const int maxW = W - 240;
   String lines[4];
   d.setFont(&fonts::DejaVu72);
-  int n = wrapMessage(gMessage, maxW, lines, 4);
-  if (n > 2) { d.setFont(&fonts::DejaVu56); n = wrapMessage(gMessage, maxW, lines, 4); }
-  if (n > 3) { d.setFont(&fonts::DejaVu40); n = wrapMessage(gMessage, maxW, lines, 4); }
+  int n = wrapMessage(msg, maxW, lines, 4);
+  if (n > 2) { d.setFont(&fonts::DejaVu56); n = wrapMessage(msg, maxW, lines, 4); }
+  if (n > 3) { d.setFont(&fonts::DejaVu40); n = wrapMessage(msg, maxW, lines, 4); }
 
   int lh = d.fontHeight() + 16;
   int y = H / 2 - (n * lh) / 2 + 6;
