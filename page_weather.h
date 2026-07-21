@@ -98,6 +98,15 @@ void drawHourlyChart(int x, int y, int w, int h) {
   int cy0 = y + 26, ch = h * 42 / 100;      // temp curve area
   int by0 = y + h * 62 / 100, bh = h * 26 / 100;  // rain bars area
 
+  // Shared hour->x mapping (slot centers) for both plots + labels, so the
+  // temperature curve and rainfall bars line up on one time axis.
+  auto hourX = [&](float i){ return x + (int)((i + 0.5f) * plotW / n); };
+
+  // Vertical time gridlines connecting both plots (drawn first, behind data)
+  for (int hh = 0; hh < n; hh += 6) {
+    d.drawFastVLine(hourX(hh), cy0, (by0 + bh) - cy0, TFT_LIGHTGREY);
+  }
+
   d.setFont(&fonts::DejaVu18);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
   d.drawString("temperature", x, y);
@@ -118,7 +127,7 @@ void drawHourlyChart(int x, int y, int w, int h) {
   int px = -1, py = -1;
   for (int i = 0; i < n; i++) {
     float v = ht[i] | 0.0f;
-    int xx = x + i * plotW / (n - 1);
+    int xx = hourX(i);
     int yy = cy0 + ch - (int)((v - tmin) / (tmax - tmin) * ch);
     if (px >= 0) {
       for (int o = -1; o <= 1; o++) d.drawLine(px, py + o, xx, yy + o, TFT_BLACK);
@@ -140,7 +149,7 @@ void drawHourlyChart(int x, int y, int w, int h) {
     if (frac > 1.0f) frac = 1.0f;
     int bhh = (int)(frac * bh);
     if (bhh < 2) bhh = 2;
-    d.fillRect(x + i * plotW / n, by0 + bh - bhh, bw - 2, bhh, TFT_BLACK);
+    d.fillRect(hourX(i) - bw / 2, by0 + bh - bhh, bw - 2, bhh, TFT_BLACK);
   }
   d.drawFastHLine(x, by0 + bh, plotW, TFT_BLACK);   // baseline
   d.drawString(String(RAIN_FULL_SCALE_MM, 0) + "mm", x + plotW + 8, by0 - 8);
@@ -152,14 +161,16 @@ void drawHourlyChart(int x, int y, int w, int h) {
     int ly = by0 + bh - (int)(frac * bh) - 22;
     if (ly < by0 - 22) ly = by0 - 22;
     d.setTextDatum(top_center);
-    d.drawString(String(rmax, 1) + "mm", x + rmaxIdx * plotW / n + bw / 2, ly);
+    d.drawString(String(rmax, 1) + "mm", hourX(rmaxIdx), ly);
     d.setTextDatum(top_left);
   }
 
-  // hour labels
-  for (int hh = 0; hh <= 18; hh += 6) {
-    d.drawString(hh < 10 ? "0" + String(hh) : String(hh), x + hh * plotW / 24, by0 + bh + 8);
+  // hour labels — one shared axis under the rainfall, serving both plots
+  d.setTextDatum(top_center);
+  for (int hh = 0; hh < n; hh += 6) {
+    d.drawString(hh < 10 ? "0" + String(hh) : String(hh), hourX(hh), by0 + bh + 8);
   }
+  d.setTextDatum(top_left);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 }
 
