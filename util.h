@@ -204,14 +204,14 @@ void showMessage(const String& msg) {
   d.waitDisplay();
 }
 
-// True if rain probability reaches 50% between now and this evening
+// True if measurable rain is forecast between now and this evening
 bool umbrellaNeeded() {
-  JsonArray hp = wxDoc["hourly"]["precipitation_probability"];
-  if (hp.isNull()) return false;
+  JsonArray hr = wxDoc["hourly"]["precipitation"];
+  if (hr.isNull()) return false;
   int from = localHour();
   int to = (from > 21) ? 23 : 21;
-  for (int i = from; i <= to && i < (int)hp.size(); i++) {
-    if ((int)(hp[i] | 0) >= 50) return true;
+  for (int i = from; i <= to && i < (int)hr.size(); i++) {
+    if ((float)(hr[i] | 0.0f) >= RAIN_MM_MIN) return true;
   }
   return false;
 }

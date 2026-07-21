@@ -10,6 +10,8 @@ static const char* SCRIPT_URL = SCRIPT_URL_SECRET;   // Apps Script /exec URL
 static const float WEATHER_LAT = WEATHER_LAT_SECRET;    // coordinates live in secrets.h
 static const float WEATHER_LON = WEATHER_LON_SECRET;
 static const char* CITY_NAME   = "Tokyo";
+static const float RAIN_MM_MIN        = 0.2f;  // an hour "has rain" at/above this (mm)
+static const float RAIN_FULL_SCALE_MM = 6.0f;  // rainfall that fills the chart bar height
 
 // ---- News (Google News RSS, source rotates by time of day) ----
 static const int TZ_OFFSET_HOURS = 9;     // JST; used for the clock + news slots

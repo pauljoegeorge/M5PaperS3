@@ -55,9 +55,9 @@ String weatherUrl() {
   u += "?latitude=" + String(WEATHER_LAT, 4);
   u += "&longitude=" + String(WEATHER_LON, 4);
   u += "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m";
-  u += "&hourly=temperature_2m,precipitation_probability";
+  u += "&hourly=temperature_2m,precipitation";
   u += "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
-       "precipitation_probability_max,sunrise,sunset";
+       "precipitation_sum,sunrise,sunset";
   u += "&timezone=auto&forecast_days=1";
   return u;
 }

@@ -81,7 +81,7 @@ void drawWeatherIcon(int cx, int cy, int r, int code) {
 // ---- Hourly chart: temperature curve on top, rain probability bars below ----
 void drawHourlyChart(int x, int y, int w, int h) {
   JsonArray ht = wxDoc["hourly"]["temperature_2m"];
-  JsonArray hp = wxDoc["hourly"]["precipitation_probability"];
+  JsonArray hr = wxDoc["hourly"]["precipitation"];   // mm
   int n = ht.size();
   if (n > 24) n = 24;
   if (n < 2) return;
@@ -102,17 +102,16 @@ void drawHourlyChart(int x, int y, int w, int h) {
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
   d.drawString("temperature", x, y);
 
-  // Rain stats for caption / highlighting
-  int pmax = 0, pmaxIdx = -1, rainFirst = -1, rainLast = -1;
+  // Rain stats (mm) for caption / peak label / rain window
+  float rmax = 0; int rmaxIdx = -1, rainFirst = -1, rainLast = -1;
   for (int i = 0; i < n; i++) {
-    int p = hp[i] | 0;
-    if (p > pmax) { pmax = p; pmaxIdx = i; }
-    if (p >= 30) { if (rainFirst < 0) rainFirst = i; rainLast = i; }
+    float mm = hr[i] | 0.0f;
+    if (mm > rmax) { rmax = mm; rmaxIdx = i; }
+    if (mm >= RAIN_MM_MIN) { if (rainFirst < 0) rainFirst = i; rainLast = i; }
   }
-  String rainCap;
-  if (pmax < 20)            rainCap = "rain: not expected";
-  else if (rainFirst >= 0)  rainCap = "rain " + String(rainFirst) + ":00-" + String(rainLast + 1) + ":00";
-  else                      rainCap = "rain: slight chance";
+  String rainCap = (rainFirst >= 0)
+      ? "rainfall " + String(rainFirst) + ":00-" + String(rainLast + 1) + ":00"
+      : "rainfall: none today";
   d.drawString(rainCap, x, by0 - 26);
 
   // temp curve (3 passes for thickness)
@@ -130,30 +129,30 @@ void drawHourlyChart(int x, int y, int w, int h) {
   drawDegString(String(tmax, 0) + "°", x + plotW + 8, cy0 - 8, TFT_DARKGREY);
   drawDegString(String(tmin, 0) + "°", x + plotW + 8, cy0 + ch - 10, TFT_DARKGREY);
 
-  // rain probability bars: black = likely (>=50%), grey = possible;
-  // dashed line marks the 50% threshold
+  // rainfall bars: height scaled to RAIN_FULL_SCALE_MM (clamped); a dry
+  // day is simply empty. Faint reference line at full scale.
   int bw = plotW / n;
-  int y50 = by0 + bh / 2;
-  for (int xd = x; xd < x + plotW; xd += 12) {
-    d.drawFastHLine(xd, y50, 6, TFT_DARKGREY);
-  }
+  d.drawFastHLine(x, by0, plotW, TFT_LIGHTGREY);   // full-scale reference
   for (int i = 0; i < n; i++) {
-    int p = hp[i] | 0;
-    int bhh = p * bh / 100;
-    if (bhh > 0) {
-      d.fillRect(x + i * plotW / n, by0 + bh - bhh, bw - 2, bhh,
-                 p >= 50 ? TFT_BLACK : TFT_DARKGREY);
-    }
+    float mm = hr[i] | 0.0f;
+    if (mm < RAIN_MM_MIN) continue;
+    float frac = mm / RAIN_FULL_SCALE_MM;
+    if (frac > 1.0f) frac = 1.0f;
+    int bhh = (int)(frac * bh);
+    if (bhh < 2) bhh = 2;
+    d.fillRect(x + i * plotW / n, by0 + bh - bhh, bw - 2, bhh, TFT_BLACK);
   }
-  d.drawFastHLine(x, by0 + bh, plotW, TFT_BLACK);
-  d.drawString("50", x + plotW + 8, y50 - 9);
+  d.drawFastHLine(x, by0 + bh, plotW, TFT_BLACK);   // baseline
+  d.drawString(String(RAIN_FULL_SCALE_MM, 0) + "mm", x + plotW + 8, by0 - 8);
 
-  // label the peak bar with its value
-  if (pmax >= 20 && pmaxIdx >= 0) {
-    int ly = by0 + bh - pmax * bh / 100 - 22;
+  // label the wettest bar with its amount
+  if (rmax >= RAIN_MM_MIN && rmaxIdx >= 0) {
+    float frac = rmax / RAIN_FULL_SCALE_MM;
+    if (frac > 1.0f) frac = 1.0f;
+    int ly = by0 + bh - (int)(frac * bh) - 22;
     if (ly < by0 - 22) ly = by0 - 22;
     d.setTextDatum(top_center);
-    d.drawString(String(pmax) + "%", x + pmaxIdx * plotW / n + bw / 2, ly);
+    d.drawString(String(rmax, 1) + "mm", x + rmaxIdx * plotW / n + bw / 2, ly);
     d.setTextDatum(top_left);
   }
 
@@ -166,15 +165,15 @@ void drawHourlyChart(int x, int y, int w, int h) {
 
 // Classic Japanese weather-app feature: is today a laundry-drying day?
 const char* laundryVerdict() {
-  JsonArray hp = wxDoc["hourly"]["precipitation_probability"];
-  int rain = 0;
-  for (int i = 9; i <= 17 && i < (int)hp.size(); i++) {
-    int p = hp[i] | 0;
-    if (p > rain) rain = p;
+  JsonArray hr = wxDoc["hourly"]["precipitation"];
+  float rain = 0;
+  for (int i = 9; i <= 17 && i < (int)hr.size(); i++) {
+    float mm = hr[i] | 0.0f;
+    if (mm > rain) rain = mm;
   }
   int hum = wxDoc["current"]["relative_humidity_2m"] | 50;
-  if (rain >= 40)              return "laundry: dry inside today";
-  if (rain <= 20 && hum < 65)  return "laundry: great drying day!";
+  if (rain >= RAIN_MM_MIN)  return "laundry: dry inside today";
+  if (hum < 65)             return "laundry: great drying day!";
   return "laundry: outside is OK";
 }
 
@@ -198,7 +197,7 @@ void renderWeather() {
   int   code    = wxDoc["current"]["weather_code"]         | 0;
   float tMax    = wxDoc["daily"]["temperature_2m_max"][0]  | 0.0f;
   float tMin    = wxDoc["daily"]["temperature_2m_min"][0]  | 0.0f;
-  int   rainMax = wxDoc["daily"]["precipitation_probability_max"][0] | 0;
+  float rainSum = wxDoc["daily"]["precipitation_sum"][0] | 0.0f;
   String sunrise = wxDoc["daily"]["sunrise"][0] | "";
   String sunset  = wxDoc["daily"]["sunset"][0]  | "";
   if (sunrise.length() > 11) sunrise = sunrise.substring(11);
@@ -216,7 +215,7 @@ void renderWeather() {
 
   d.setFont(&fonts::DejaVu18);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-  d.drawString("rain " + String(rainMax) + "%   humidity " + String(hum) + "%   wind " + String(wind, 0) + " km/h", 30, 395);
+  d.drawString("rain " + String(rainSum, 1) + " mm   humidity " + String(hum) + "%   wind " + String(wind, 0) + " km/h", 30, 395);
   d.drawString("sunrise " + sunrise + "   sunset " + sunset, 30, 427);
   d.drawString(laundryVerdict(), 30, 459);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
