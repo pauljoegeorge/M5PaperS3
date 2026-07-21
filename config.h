@@ -7,8 +7,8 @@ static const char* WIFI_PASS  = WIFI_PASS_SECRET;
 static const char* SCRIPT_URL = SCRIPT_URL_SECRET;   // Apps Script /exec URL
 
 // ---- Weather (Open-Meteo, no API key needed) ----
-static const float WEATHER_LAT = 35.75f;           // <-- change to your location
-static const float WEATHER_LON = 139.5f;
+static const float WEATHER_LAT = WEATHER_LAT_SECRET;    // coordinates live in secrets.h
+static const float WEATHER_LON = WEATHER_LON_SECRET;
 static const char* CITY_NAME   = "Tokyo";
 
 // ---- News (Google News RSS, source rotates by time of day) ----

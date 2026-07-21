@@ -48,6 +48,8 @@ Create `secrets.h` next to the .ino:
 #define WIFI_SSID_SECRET  "your-wifi-ssid"        // 2.4 GHz only
 #define WIFI_PASS_SECRET  "your-wifi-password"
 #define SCRIPT_URL_SECRET "https://script.google.com/macros/s/XXXX/exec"
+#define WEATHER_LAT_SECRET 35.6812f               // your location (Open-Meteo)
+#define WEATHER_LON_SECRET 139.7671f
 ```
 
 ### 3. Google Apps Script (calendar feed)
