@@ -12,7 +12,7 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 | Kotoba | JLPT N3/N2 word of the day with reading, meaning, and a furigana example sentence | [Jisho](https://jisho.org/) + [Tatoeba](https://tatoeba.org/) APIs, curated fallback list |
 | Countdown | Days remaining to upcoming dates | Calendar events titled `CNT: name` on their target date |
 | Message | Optional big decorated message | Calendar event titled `MSG: your text` |
-| Earthquake | Takes over the screen after a recent M3+ quake in Japan | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
+| Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English when recognized, else Japanese | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
 
 ## Behavior
 
@@ -97,9 +97,9 @@ re-flashing needed; changes appear within one refresh.
   form also works without the script change: an event *today* titled
   `CNT: name / YYYY-MM-DD`.)
 
-Extras derived from weather data: an umbrella icon appears in every
-page's header when rain probability reaches 50% before evening, and the
-weather page shows a laundry-drying verdict.
+Every page shows today's date, and an umbrella icon appears in every
+page's header when rain probability reaches 50% before evening; the
+weather page also shows a laundry-drying verdict.
 
 ## File layout
 
@@ -110,6 +110,7 @@ util.h                     shared globals, drawing/text helpers
 net.h                      WiFi + all data fetching/parsing
 page_*.h                   one file per page
 word_data.h                fallback N3/N2 word list
+place_names.h              JMA hypocenter name -> English lookup (earthquake page)
 apps_script_countdowns.gs  Apps Script addition for the countdown page
 secrets.h                  credentials (gitignored — create your own)
 ```
@@ -123,5 +124,8 @@ To add a page: write `page_foo.h` with a `renderFoo()`, include it in the
   text (no emoji glyphs on e-ink).
 - Earthquake alerts poll at the refresh interval — this is recent quake
   info, **not** an early warning system.
+- Epicenter English names are composed from a static table of Japan's 47
+  prefectures + common JMA region/suffix names (see `place_names.h`);
+  uncommon or compound names fall back to the original Japanese.
 - Re-flashing: if an upload fails to start, press the reset button as the
   upload begins (light sleep can make the USB port drowsy).

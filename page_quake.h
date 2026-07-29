@@ -1,5 +1,6 @@
 #pragma once
 #include "util.h"
+#include "place_names.h"
 
 // JMA maxScale (x10) -> shindo intensity label
 String shindoText(int scale) {
@@ -44,9 +45,11 @@ void renderQuake() {
 
   d.fillRect(60, 310, W - 120, 2, TFT_BLACK);
 
-  // Epicenter (Japanese) + time
-  d.setFont(&fonts::lgfxJapanGothic_40);   // reuse a size other pages already link
-  d.drawString(gQuakePlace, 80, 345);
+  // Epicenter (English when recognized, else Japanese) + time
+  String placeEn = translatePlaceName(gQuakePlace);
+  bool haveEn = placeEn.length() > 0;
+  d.setFont(haveEn ? &fonts::DejaVu40 : &fonts::lgfxJapanGothic_40);
+  d.drawString(haveEn ? placeEn : gQuakePlace, 80, 345);
 
   d.setFont(&fonts::DejaVu24);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);

@@ -331,7 +331,8 @@ void fetchWotd() {
   Serial.printf("WOTD from Jisho: %s (%s)\n", word.c_str(), gWotdLevel.c_str());
 }
 
-// Check P2PQuake for a recent quake of magnitude >= EQ_MIN_MAG.
+// Check P2PQuake for recent quakes of magnitude >= EQ_MIN_MAG within the
+// last EQ_WINDOW_MIN minutes, and surface the biggest one by magnitude.
 // Sets/clears the gQuake* globals.
 void checkQuakes() {
   String body = httpGET("https://api.p2pquake.net/v2/history?codes=551&limit=10");
@@ -350,6 +351,7 @@ void checkQuakes() {
   for (JsonObject q : doc.as<JsonArray>()) {
     float mag = q["earthquake"]["hypocenter"]["magnitude"] | -1.0f;
     if (mag < EQ_MIN_MAG) continue;
+    if (gQuakeActive && mag <= gQuakeMag) continue;   // keep the biggest so far
 
     // "2026/07/17 12:34:56.789" (JST) -> UTC epoch
     String ts = q["earthquake"]["time"] | "";
@@ -368,7 +370,6 @@ void checkQuakes() {
     gQuakePlace  = (const char*)(q["earthquake"]["hypocenter"]["name"] | "");
     gQuakeTime   = ts.substring(11, 16);
     Serial.printf("Quake: M%.1f %s\n", mag, gQuakePlace.c_str());
-    break;   // history is newest-first
   }
 }
 
