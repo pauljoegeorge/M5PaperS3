@@ -65,6 +65,15 @@ int localHour() {
   return (int)((time(nullptr) / 3600 + TZ_OFFSET_HOURS) % 24);
 }
 
+// "Wed, Jul 29" in local time (fixed TZ offset; valid once NTP has synced)
+String formatDate() {
+  time_t local = time(nullptr) + (time_t)TZ_OFFSET_HOURS * 3600;
+  struct tm* t = gmtime(&local);   // treat shifted epoch as UTC to get local wall-clock fields
+  char buf[16];
+  strftime(buf, sizeof(buf), "%a, %b %d", t);
+  return String(buf);
+}
+
 bool quietHours() {
   int h = localHour();
   return (QUIET_START_HOUR > QUIET_END_HOUR)
@@ -245,6 +254,7 @@ void drawHeader(const String& title, const String& subtitle = "") {
   if (gUpdated.length()) {
     d.drawString("updated " + gUpdated, W - 30, 52);
   }
+  d.drawString(formatDate(), W - 30, 80);
   d.setTextDatum(top_left);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 

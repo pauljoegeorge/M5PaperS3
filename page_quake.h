@@ -24,6 +24,11 @@ void renderQuake() {
   d.fillRect(0, 0, W, 110, TFT_BLACK);
   d.setTextColor(TFT_WHITE, TFT_BLACK);
   drawCentered("EARTHQUAKE", 28, &fonts::DejaVu56);
+  d.setFont(&fonts::DejaVu18);
+  d.setTextColor(TFT_WHITE, TFT_BLACK);
+  d.setTextDatum(top_right);
+  d.drawString(formatDate(), W - 30, 20);
+  d.setTextDatum(top_left);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 
   // Magnitude (left) and max intensity (right)

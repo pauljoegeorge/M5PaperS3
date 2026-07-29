@@ -98,9 +98,10 @@ void drawHourlyChart(int x, int y, int w, int h) {
   int cy0 = y + 26, ch = h * 42 / 100;      // temp curve area
   int by0 = y + h * 62 / 100, bh = h * 26 / 100;  // rain bars area
 
-  // Shared hour->x mapping (slot centers) for both plots + labels, so the
-  // temperature curve and rainfall bars line up on one time axis.
-  auto hourX = [&](float i){ return x + (int)((i + 0.5f) * plotW / n); };
+  // Shared hour->x mapping (endpoints at the edges) for both plots +
+  // labels, so the temperature curve spans edge-to-edge while the rainfall
+  // bars still line up with it on one time axis.
+  auto hourX = [&](float i){ return x + (int)(i * plotW / (n - 1)); };
 
   // Vertical time gridlines connecting both plots (drawn first, behind data)
   for (int hh = 0; hh < n; hh += 6) {
@@ -149,7 +150,11 @@ void drawHourlyChart(int x, int y, int w, int h) {
     if (frac > 1.0f) frac = 1.0f;
     int bhh = (int)(frac * bh);
     if (bhh < 2) bhh = 2;
-    d.fillRect(hourX(i) - bw / 2, by0 + bh - bhh, bw - 2, bhh, TFT_BLACK);
+    int bwn = bw - 2;
+    int bx = hourX(i) - bwn / 2;            // center on the hour; clamp at edges
+    if (bx < x) bx = x;
+    if (bx + bwn > x + plotW) bx = x + plotW - bwn;
+    d.fillRect(bx, by0 + bh - bhh, bwn, bhh, TFT_BLACK);
   }
   d.drawFastHLine(x, by0 + bh, plotW, TFT_BLACK);   // baseline
   d.drawString(String(RAIN_FULL_SCALE_MM, 0) + "mm", x + plotW + 8, by0 - 8);

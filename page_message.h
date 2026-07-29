@@ -28,6 +28,10 @@ void renderMessage() {
   sparkle(W - 100, H - 105, 24, TFT_BLACK);
   sparkle(W - 138, H - 140, 11, TFT_DARKGREY);
 
+  d.setTextColor(TFT_DARKGREY, TFT_WHITE);
+  drawCentered(formatDate(), 64, &fonts::DejaVu18);
+  d.setTextColor(TFT_BLACK, TFT_WHITE);
+
   // Message text: pick the biggest font that fits in 3 lines
   String msg = stripEmoji(gMessage);
   const int maxW = W - 240;
