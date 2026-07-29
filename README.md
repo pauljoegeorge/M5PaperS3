@@ -13,6 +13,7 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 | Countdown | Days remaining to upcoming dates | Calendar events titled `CNT: name` on their target date |
 | Message | Optional big decorated message | Calendar event titled `MSG: your text` |
 | Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English with the Japanese name below when recognized, else Japanese alone | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
+| Photo | Whatever image is newest in a Drive folder you control — drop in a new photo any time to change it | Google Drive, via the same Apps Script |
 
 ## Behavior
 
@@ -38,6 +39,9 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
   `https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json`
 - *Boards Manager* → install **M5Stack**, then select board **M5PaperS3**.
 - Install libraries: **M5GFX**, **ArduinoJson** (v7).
+- *Tools → PSRAM* → enable it (exact label depends on your board package
+  version, e.g. "OPI PSRAM"). Required for the Photo page's decode buffer;
+  everything else works fine either way.
 
 ### 2. secrets.h (not in the repo)
 
@@ -76,11 +80,57 @@ Put the deployment URL (ends in `/exec`) in `secrets.h`. The
 [apps_script_countdowns.gs](apps_script_countdowns.gs) — add its
 function to your script and call it in the payload.
 
-### 4. Configure
+### 4. Photo page (optional)
+
+Add a `?photo=1` branch to the same `doGet(e)` — it serves whichever
+image is newest in one Drive folder, so the device always fetches the
+same fixed URL and you never have to update anything to change the
+picture, just drop a new file into the folder:
+
+```javascript
+const PHOTO_FOLDER_ID = 'YOUR_FOLDER_ID_HERE';
+
+function findNewestPhoto() {
+  const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+  const files = folder.getFiles();
+  let newest = null;
+  while (files.hasNext()) {
+    const f = files.next();
+    if (f.getMimeType().indexOf('image/') !== 0) continue;
+    if (!newest || f.getLastUpdated() > newest.getLastUpdated()) newest = f;
+  }
+  return newest;
+}
+
+function servePhotoId() {
+  const newest = findNewestPhoto();
+  const payload = newest ? { id: newest.getId() } : { id: '' };
+  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  if (e.parameter.photo) {
+    return servePhotoId();
+  }
+  // ...existing calendar logic...
+}
+```
+
+Set the folder to **"Anyone with the link — Viewer"** (Share menu) — the
+device fetches the actual image bytes straight from Google's CDN
+(`lh3.googleusercontent.com`), not through the script, so the file needs
+to be link-accessible. Any image format works (JPEG, PNG, HEIC, etc.).
+
+To change the picture: just upload a new file into that folder from your
+phone — no redeploy, no ID to copy anywhere. Old files can be left in the
+folder or deleted; only the newest one is ever used.
+
+### 5. Configure
 
 Everything tunable lives in [config.h](config.h): location + city for
 weather, news feeds and their time slots, refresh/slideshow intervals,
-quiet hours, and the earthquake alert threshold.
+quiet hours, the earthquake alert threshold, and `PHOTO_FILL` (how
+aggressively the Photo page crops to fill the screen vs. letterboxing).
 
 ## Special calendar events
 
@@ -127,5 +177,9 @@ To add a page: write `page_foo.h` with a `renderFoo()`, include it in the
 - Epicenter English names are composed from a static table of Japan's 47
   prefectures + common JMA region/suffix names (see `place_names.h`);
   uncommon or compound names fall back to the original Japanese.
+- Photo page: decode + dither only happens when the Drive folder's newest
+  file actually changes (checked every `REFRESH_MIN`), not on every render,
+  so swapping the picture takes up to one refresh cycle (or a long-press)
+  to appear. Requires PSRAM enabled in board settings.
 - Re-flashing: if an upload fails to start, press the reset button as the
   upload begins (light sleep can make the USB port drowsy).

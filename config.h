@@ -39,6 +39,14 @@ static const int QUIET_END_HOUR   = 6;
 static const float EQ_MIN_MAG    = 3.0f;  // alert on magnitude >= this
 static const int   EQ_WINDOW_MIN = 60;    // ...that happened within the last N minutes
 
+// ---- Photo page ----
+// How much to zoom into the photo: 0.0 = show the whole image, letterboxed
+// if its aspect ratio doesn't match the panel; 1.0 = zoom until it fills the
+// panel completely, cropping whichever side overflows. Values in between
+// blend the two — a partial zoom that shows more letterbox-free area
+// without cropping as aggressively as full cover.
+static const float PHOTO_FILL = 0.3f;
+
 // ---- Timing ----
 static const int REFRESH_MIN   = 30;    // re-fetch calendar + weather (minutes)
 static const int SLIDE_MIN     = 5;     // auto-flip between pages (minutes)

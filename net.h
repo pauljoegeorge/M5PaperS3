@@ -1,6 +1,7 @@
 #pragma once
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <esp_heap_caps.h>
 #include "config.h"
 #include "util.h"
 #include "word_data.h"
@@ -373,6 +374,131 @@ void checkQuakes() {
   }
 }
 
+// Reads width/height straight from the JPEG's SOF marker (no full decode
+// needed) — used to compute a crop-to-cover zoom factor ourselves, since
+// M5GFX's public drawJpg() doesn't expose decoded dimensions ahead of time.
+bool getJpegSize(const uint8_t* buf, size_t len, int* outW, int* outH) {
+  if (len < 4 || buf[0] != 0xFF || buf[1] != 0xD8) return false;
+  size_t i = 2;
+  while (i + 4 <= len) {
+    if (buf[i] != 0xFF) { i++; continue; }
+    uint8_t marker = buf[i + 1];
+    if (marker == 0xFF) { i++; continue; }   // fill byte before the real marker
+    if (marker == 0xD8 || marker == 0xD9 || (marker >= 0xD0 && marker <= 0xD7)) {
+      i += 2;
+      continue;
+    }
+    if (i + 4 > len) break;
+    uint16_t segLen = (buf[i + 2] << 8) | buf[i + 3];
+    bool isSOF = marker >= 0xC0 && marker <= 0xCF &&
+                 marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
+    if (isSOF) {
+      if (i + 9 > len) return false;
+      *outH = (buf[i + 5] << 8) | buf[i + 6];
+      *outW = (buf[i + 7] << 8) | buf[i + 8];
+      return true;
+    }
+    i += 2 + segLen;
+  }
+  return false;
+}
+
+// Refresh the Photo page's image from the Apps Script "?photo=1" endpoint,
+// which returns the Drive file ID of the newest photo in a folder you can
+// drop new pictures into any time. Only re-downloads/decodes when that ID
+// actually changes, since JPEG decode + dithering is the most expensive
+// step on this device and the photo rarely changes between refreshes.
+void fetchPhoto() {
+  String body = httpGET(String(SCRIPT_URL) + "?photo=1");
+  if (!body.length()) return;
+
+  JsonDocument filter;
+  filter["id"] = true;
+  JsonDocument doc;
+  if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return;
+
+  String id = doc["id"] | "";
+  if (!id.length() || id == gPhotoId) return;   // no photo, or unchanged
+
+  // Fetch the resized JPEG straight from Google's content CDN, bypassing
+  // drive.google.com/thumbnail (which redirects here anyway, but forces
+  // the size down to ~160px for anonymous requests regardless of the sz=
+  // param). Requesting this URL directly, with our own size suffix, gets
+  // the real resize.
+  HTTPClient http;
+  http.setTimeout(20000);
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  http.begin("https://lh3.googleusercontent.com/d/" + id + "=w960");
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    Serial.printf("Photo fetch failed: HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  int len = http.getSize();
+  if (len <= 0) {
+    Serial.println("Photo fetch: no content-length");
+    http.end();
+    return;
+  }
+  uint8_t* buf = (uint8_t*)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+  if (!buf) {
+    Serial.printf("Photo: PSRAM alloc failed for %d bytes\n", len);
+    http.end();
+    return;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  int got = 0;
+  while (got < len && http.connected()) {
+    size_t avail = stream->available();
+    if (avail) {
+      got += stream->readBytes(buf + got, min((size_t)(len - got), avail));
+    } else {
+      delay(1);
+    }
+  }
+  http.end();
+
+  if (got != len) {                    // incomplete download -> try again next refresh
+    Serial.printf("Photo: incomplete download (%d/%d bytes)\n", got, len);
+    free(buf);
+    return;
+  }
+
+  if (!gPhotoSprite.getBuffer()) {
+    gPhotoSprite.setColorDepth(lgfx::color_depth_t::grayscale_8bit);
+    gPhotoSprite.setPsram(true);
+    gPhotoSprite.createSprite(W, H);
+  }
+  gPhotoSprite.fillScreen(TFT_WHITE);   // fallback padding if size parsing below fails
+
+  int imgW = 0, imgH = 0;
+  bool ok;
+  if (getJpegSize(buf, len, &imgW, &imgH) && imgW > 0 && imgH > 0) {
+    // One uniform zoom (same for both axes, so no distortion), blended
+    // between "fit whole image, may letterbox" and "fill completely,
+    // crop the overflow" by PHOTO_FILL (config.h).
+    float containZoom = min((float)W / imgW, (float)H / imgH);
+    float coverZoom   = max((float)W / imgW, (float)H / imgH);
+    float zoom = containZoom + PHOTO_FILL * (coverZoom - containZoom);
+    ok = gPhotoSprite.drawJpg(buf, len, 0, 0, W, H, 0, 0, zoom, zoom, middle_center);
+  } else {
+    // Couldn't read dimensions -> fall back to fit-within (may letterbox)
+    ok = gPhotoSprite.drawJpg(buf, len, 0, 0, W, H, 0, 0, 0.0f, 0.0f, middle_center);
+  }
+  free(buf);
+
+  if (ok) {
+    ditherSprite(gPhotoSprite, W, H);
+    gPhotoId = id;
+    Serial.printf("Photo updated: %s\n", id.c_str());
+  } else {
+    Serial.println("Photo JPEG decode failed");
+  }
+}
+
 // Fetch calendar + weather in one WiFi session.
 // Only overwrites the global docs on success, so stale-but-valid
 // data survives a failed refresh. Returns true if calendar parsed.
@@ -503,6 +629,7 @@ bool refreshData() {
 
   fetchWotd();
   checkQuakes();
+  fetchPhoto();
 
   wifiOff();
   return calOk;

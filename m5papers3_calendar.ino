@@ -32,12 +32,13 @@
 #include "page_countdown.h"
 #include "page_message.h"
 #include "page_quake.h"
+#include "page_photo.h"
 
 enum Page { PAGE_CALENDAR, PAGE_WEATHER, PAGE_NEWS, PAGE_WORD,
-            PAGE_CNT, PAGE_MESSAGE, PAGE_QUAKE };
+            PAGE_CNT, PAGE_MESSAGE, PAGE_QUAKE, PAGE_PHOTO };
 
 Page currentPage = PAGE_CALENDAR;
-Page pageOrder[7];
+Page pageOrder[8];
 int  pageCount = 0;
 
 int64_t lastFetchMs = 0;
@@ -55,6 +56,7 @@ void buildPageList() {
   pageOrder[pageCount++] = PAGE_WORD;
   if (gCntCount)          pageOrder[pageCount++] = PAGE_CNT;
   if (gMessage.length())  pageOrder[pageCount++] = PAGE_MESSAGE;
+  if (gPhotoId.length())  pageOrder[pageCount++] = PAGE_PHOTO;
 }
 
 int pageIndex(Page p) {
@@ -76,6 +78,7 @@ void renderCurrentPage() {
     case PAGE_CNT:      renderCountdown(); break;
     case PAGE_MESSAGE:  renderMessage();  break;
     case PAGE_QUAKE:    renderQuake();    break;
+    case PAGE_PHOTO:    renderPhoto();    break;
   }
   d.waitDisplay();
 }

@@ -53,6 +53,12 @@ int    gQuakeScale = -1;      // JMA maxScale (x10)
 String gQuakePlace;           // epicenter name (Japanese)
 String gQuakeTime;            // "HH:MM"
 
+// Photo-of-the-day: pre-decoded + dithered image for page_photo.h, filled
+// in by fetchPhoto() in net.h and simply blitted at render time — the slow
+// work (JPEG decode, dithering) happens once per photo change, not per render.
+LGFX_Sprite gPhotoSprite(&d);
+String gPhotoId;   // Drive file ID of the currently-decoded photo, "" if none yet
+
 // Monotonic-enough clock that keeps counting through light sleep
 int64_t nowMs() {
   struct timeval tv;
@@ -229,6 +235,34 @@ void drawUmbrella(int cx, int cy, int r, uint32_t col) {
   d.fillArc(cx, cy, 0, r, 180, 360, col);                       // canopy
   d.fillRect(cx - 1, cy, 3, r, col);                            // stem
   d.fillArc(cx - r / 4, cy + r, r / 4 - 1, r / 4 + 1, 0, 180, col);  // hook
+}
+
+// In-place Floyd-Steinberg dithering of a grayscale_8bit sprite, quantized
+// to the e-ink panel's native 16 gray levels. Without this, photos come out
+// banded/posterized — the panel driver itself just truncates to the nearest
+// level with no dithering of its own.
+void ditherSprite(LGFX_Sprite& spr, int w, int h) {
+  uint8_t* buf = (uint8_t*)spr.getBuffer();
+  if (!buf) return;
+
+  for (int y = 0; y < h; y++) {
+    uint8_t* row     = buf + y * w;
+    uint8_t* nextRow = (y + 1 < h) ? buf + (y + 1) * w : nullptr;
+    for (int x = 0; x < w; x++) {
+      int oldVal = row[x];
+      int level  = (oldVal * 15 + 127) / 255;   // quantize to 0..15
+      int newVal = level * 255 / 15;            // snap back to an 8-bit value
+      row[x] = newVal;
+      int err = oldVal - newVal;
+
+      if (x + 1 < w) row[x + 1] = constrain(row[x + 1] + err * 7 / 16, 0, 255);
+      if (nextRow) {
+        if (x > 0)     nextRow[x - 1] = constrain(nextRow[x - 1] + err * 3 / 16, 0, 255);
+                       nextRow[x]     = constrain(nextRow[x]     + err * 5 / 16, 0, 255);
+        if (x + 1 < w) nextRow[x + 1] = constrain(nextRow[x + 1] + err * 1 / 16, 0, 255);
+      }
+    }
+  }
 }
 
 // Shared page header: big title left (+ optional grey subtitle beside it),
