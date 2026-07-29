@@ -199,7 +199,7 @@ void renderWeather() {
   // fall back to Open-Meteo's ISO date
   String date = calDoc["date"] | "";
   if (!date.length()) date = wxDoc["daily"]["time"][0] | "";
-  drawHeader(CITY_NAME, date);
+  drawHeader(CITY_NAME, date, false);   // subtitle is already the date
 
   if (wxDoc.isNull() || wxDoc["current"].isNull()) {
     drawCentered("Weather unavailable", H / 2 - 20, &fonts::DejaVu40);

@@ -71,24 +71,60 @@ const NameEntry PREFECTURES[] = {
   {"沖縄県",   "Okinawa Pref."},
 };
 
-// Standard suffixes JMA appends to a prefecture/region name. Longer/more
+// Standard suffixes JMA appends directly to a prefecture name. Longer/more
 // specific suffixes are listed first so e.g. "東方沖" isn't matched as "沖".
 const NameEntry SUFFIXES[] = {
-  {"東方沖", "eastern offshore waters"},
-  {"西方沖", "western offshore waters"},
-  {"北方沖", "northern offshore waters"},
-  {"南方沖", "southern offshore waters"},
-  {"沖",     "offshore"},
-  {"沿岸部", "coastal area"},
-  {"地方",   "region"},
-  {"北部",   "northern part"},
-  {"中部",   "central part"},
-  {"南部",   "southern part"},
-  {"近海",   "nearby waters"},
+  {"東方沖",   "eastern offshore waters"},
+  {"西方沖",   "western offshore waters"},
+  {"北方沖",   "northern offshore waters"},
+  {"南方沖",   "southern offshore waters"},
+  {"沖",       "offshore"},
+  {"沿岸北部", "northern coastal area"},
+  {"沿岸中部", "central coastal area"},
+  {"沿岸南部", "southern coastal area"},
+  {"沿岸部",   "coastal area"},
+  {"内陸北部", "northern inland area"},
+  {"内陸南部", "southern inland area"},
+  {"地方",     "region"},
+  {"北部",     "northern part"},
+  {"中部",     "central part"},
+  {"南部",     "southern part"},
+  {"東部",     "eastern part"},
+  {"西部",     "western part"},
+  {"近海",     "nearby waters"},
+};
+
+// Named sub-regions JMA inserts between the prefecture name and a suffix
+// (e.g. "熊本県熊本地方" = 熊本県 + 熊本 + 地方). Not exhaustive — JMA has
+// ~200 total hypocenter names — but covers commonly-quoted ones so more
+// names resolve to English instead of falling back to Japanese.
+const NameEntry REGIONS[] = {
+  // Hokkaido
+  {"十勝",       "Tokachi"},
+  {"石狩",       "Ishikari"},
+  {"日高",       "Hidaka"},
+  {"渡島",       "Oshima"},
+  {"檜山",       "Hiyama"},
+  {"後志",       "Shiribeshi"},
+  {"胆振",       "Iburi"},
+  {"上川",       "Kamikawa"},
+  {"留萌",       "Rumoi"},
+  {"宗谷",       "Soya"},
+  {"根室",       "Nemuro"},
+  {"釧路",       "Kushiro"},
+  // Tohoku
+  {"津軽",       "Tsugaru"},
+  // Kyushu
+  {"熊本",       "Kumamoto"},
+  {"天草・芦北", "Amakusa-Ashikita"},
+  {"阿蘇",       "Aso"},
+  {"球磨",       "Kuma"},
+  {"薩摩",       "Satsuma"},
+  {"大隅",       "Osumi"},
 };
 
 // Best-effort English rendering of a JMA hypocenter name; "" if the name
-// isn't a recognized prefecture/region + standard-suffix combination, so
+// isn't a recognized prefecture (+ sub-region) + suffix combination, so
 // callers can fall back to showing the original Japanese string.
 String translatePlaceName(const String& jp) {
   for (const NameEntry& p : PREFECTURES) {
@@ -98,10 +134,22 @@ String translatePlaceName(const String& jp) {
     String rest = jp.substring(prefix.length());
     if (!rest.length()) return String(p.en);
 
+    // "<prefecture><suffix>" e.g. "岩手県沖" -> "Iwate Pref. (offshore)"
     for (const NameEntry& s : SUFFIXES) {
       if (rest == s.jp) return String(p.en) + " (" + s.en + ")";
     }
-    return "";   // unrecognized suffix -> let caller fall back to Japanese
+
+    // "<prefecture><region><suffix>" e.g. "熊本県熊本地方" ->
+    // "Kumamoto Pref. (Kumamoto region)"
+    for (const NameEntry& s : SUFFIXES) {
+      String suf(s.jp);
+      if (rest.length() <= suf.length() || !rest.endsWith(suf)) continue;
+      String region = rest.substring(0, rest.length() - suf.length());
+      for (const NameEntry& r : REGIONS) {
+        if (region == r.jp) return String(p.en) + " (" + r.en + " " + s.en + ")";
+      }
+    }
+    return "";   // unrecognized -> let caller fall back to Japanese
   }
   return "";
 }

@@ -45,15 +45,23 @@ void renderQuake() {
 
   d.fillRect(60, 310, W - 120, 2, TFT_BLACK);
 
-  // Epicenter (English when recognized, else Japanese) + time
+  // Epicenter: English (when recognized) with Japanese below; else Japanese alone
   String placeEn = translatePlaceName(gQuakePlace);
   bool haveEn = placeEn.length() > 0;
-  d.setFont(haveEn ? &fonts::DejaVu40 : &fonts::lgfxJapanGothic_40);
-  d.drawString(haveEn ? placeEn : gQuakePlace, 80, 345);
+
+  d.setFont(haveEn ? (const lgfx::IFont*)&fonts::DejaVu40 : (const lgfx::IFont*)&fonts::lgfxJapanGothic_40);
+  d.drawString(haveEn ? placeEn : gQuakePlace, 80, 330);
+
+  if (haveEn) {
+    d.setFont(&fonts::lgfxJapanGothic_24);
+    d.setTextColor(TFT_DARKGREY, TFT_WHITE);
+    d.drawString(gQuakePlace, 80, 378);
+    d.setTextColor(TFT_BLACK, TFT_WHITE);
+  }
 
   d.setFont(&fonts::DejaVu24);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-  d.drawString(gQuakeTime + " JST    source: P2PQuake / JMA", 80, 420);
+  d.drawString(gQuakeTime + " JST    source: P2PQuake / JMA", 80, 430);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 
   d.display();

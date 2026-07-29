@@ -232,8 +232,8 @@ void drawUmbrella(int cx, int cy, int r, uint32_t col) {
 }
 
 // Shared page header: big title left (+ optional grey subtitle beside it),
-// battery + updated time right, divider
-void drawHeader(const String& title, const String& subtitle = "") {
+// battery + updated time right, date (optional), divider
+void drawHeader(const String& title, const String& subtitle = "", bool showDate = true) {
   d.setTextColor(TFT_BLACK, TFT_WHITE);
   d.setFont(&fonts::DejaVu56);
   d.setCursor(30, 24);
@@ -254,7 +254,9 @@ void drawHeader(const String& title, const String& subtitle = "") {
   if (gUpdated.length()) {
     d.drawString("updated " + gUpdated, W - 30, 52);
   }
-  d.drawString(formatDate(), W - 30, 80);
+  if (showDate) {
+    d.drawString(formatDate(), W - 30, 80);
+  }
   d.setTextDatum(top_left);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 

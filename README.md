@@ -12,7 +12,7 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 | Kotoba | JLPT N3/N2 word of the day with reading, meaning, and a furigana example sentence | [Jisho](https://jisho.org/) + [Tatoeba](https://tatoeba.org/) APIs, curated fallback list |
 | Countdown | Days remaining to upcoming dates | Calendar events titled `CNT: name` on their target date |
 | Message | Optional big decorated message | Calendar event titled `MSG: your text` |
-| Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English when recognized, else Japanese | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
+| Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English with the Japanese name below when recognized, else Japanese alone | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
 
 ## Behavior
 

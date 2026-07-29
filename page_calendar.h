@@ -19,14 +19,14 @@ void renderCalendar() {
   d.fillScreen(TFT_WHITE);
 
   if (calDoc.isNull()) {
-    drawHeader("Calendar");
+    drawHeader("Calendar", "", false);
     drawCentered("No data - check WiFi", H / 2 - 20, &fonts::DejaVu40);
     d.display();
     return;
   }
 
   String date = calDoc["date"] | "Today";
-  drawHeader(date);
+  drawHeader(date, "", false);   // title is already the date
 
   JsonArray events = calDoc["events"];
 
