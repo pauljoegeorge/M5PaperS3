@@ -502,7 +502,7 @@ void fetchPhoto() {
 // Fetch calendar + weather in one WiFi session.
 // Only overwrites the global docs on success, so stale-but-valid
 // data survives a failed refresh. Returns true if calendar parsed.
-bool refreshData() {
+bool refreshData(bool includePhoto) {
   if (!connectWiFi()) {
     Serial.println("WiFi failed");
     return false;
@@ -629,7 +629,7 @@ bool refreshData() {
 
   fetchWotd();
   checkQuakes();
-  fetchPhoto();
+  if (includePhoto) fetchPhoto();   // photo only refreshed on demand (boot + long-press), not every periodic refresh
 
   wifiOff();
   return calOk;

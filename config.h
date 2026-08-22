@@ -32,7 +32,7 @@ static const NewsSlot NEWS_SLOTS[] = {
 static const int NEWS_SLOT_COUNT = sizeof(NEWS_SLOTS) / sizeof(NEWS_SLOTS[0]);
 
 // ---- Quiet hours (no slideshow flips at night; touch still works) ----
-static const int QUIET_START_HOUR = 0;    // midnight
+static const int QUIET_START_HOUR = 23;   // 11 PM
 static const int QUIET_END_HOUR   = 6;
 
 // ---- Earthquake alerts (P2PQuake public API, covers JMA reports) ----
@@ -48,6 +48,9 @@ static const int   EQ_WINDOW_MIN = 60;    // ...that happened within the last N 
 static const float PHOTO_FILL = 0.3f;
 
 // ---- Timing ----
-static const int REFRESH_MIN   = 30;    // re-fetch calendar + weather (minutes)
-static const int SLIDE_MIN     = 5;     // auto-flip between pages (minutes)
-static const int TOUCH_POLL_MS = 400;   // touch poll interval; larger = better battery
+static const int REFRESH_MIN  = 30;     // re-fetch calendar + weather (minutes)
+static const int SLIDE_MIN    = 5;      // auto-flip between pages (minutes)
+// Touch is now caught by a GPIO interrupt (near-instant), so this is just
+// a fallback nap length / periodic timer check — safe to set higher than
+// the old 400ms poll interval.
+static const int TOUCH_POLL_MS = 2000;

@@ -11,8 +11,10 @@
  *   - tap LEFT half   -> previous page
  *   - LONG PRESS (~1.5 s) anywhere -> re-fetch everything now
  *
- * Quiet hours (QUIET_START_HOUR..QUIET_END_HOUR): no automatic page
- * flips at night; touch still works, data still refreshes.
+ * Quiet hours (QUIET_START_HOUR..QUIET_END_HOUR): device deep-sleeps
+ * fully overnight to save battery — screen holds its last image, touch
+ * and data refresh are both inactive until QUIET_END_HOUR, when it
+ * reboots and refreshes automatically.
  *
  * Special message: calendar event today titled "MSG: your text".
  *
@@ -22,6 +24,8 @@
 
 #include <M5GFX.h>
 #include <ArduinoJson.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
 #include "config.h"
 #include "util.h"
 #include "net.h"
@@ -36,6 +40,12 @@
 
 enum Page { PAGE_CALENDAR, PAGE_WEATHER, PAGE_NEWS, PAGE_WORD,
             PAGE_CNT, PAGE_MESSAGE, PAGE_QUAKE, PAGE_PHOTO };
+
+// GT911 touch controller's INT pin on the M5PaperS3 (see M5GFX's board
+// autodetect: cfg.pin_int = GPIO_NUM_48). The touch driver pulls it low
+// whenever touch data is waiting, so we use it as a light-sleep wakeup
+// source to avoid polling the touch controller on a timer all day.
+static const gpio_num_t TOUCH_INT_PIN = GPIO_NUM_48;
 
 Page currentPage = PAGE_CALENDAR;
 Page pageOrder[8];
@@ -83,9 +93,11 @@ void renderCurrentPage() {
   d.waitDisplay();
 }
 
-// Fetch everything, rebuild the rotation, jump to a fresh quake alert
-void doRefresh() {
-  refreshData();
+// Fetch everything, rebuild the rotation, jump to a fresh quake alert.
+// manual == true (boot + long-press) also re-fetches the photo; periodic
+// refreshes pass false so the photo only changes when you ask for it.
+void doRefresh(bool manual) {
+  refreshData(manual);
   buildPageList();
   if (gQuakeActive && gQuakeTime != shownQuakeTime) {
     currentPage = PAGE_QUAKE;          // new quake -> take over the screen
@@ -107,12 +119,20 @@ void setup() {
   H = d.height();
 
   showMessage("Loading...");
-  doRefresh();
+  doRefresh(true);          // boot: fetch everything incl. photo
   renderCurrentPage();
 }
 
 void loop() {
-  // Nap briefly, then wake to poll touch and check timers
+  // Wake instantly on a touch (GT911 INT pin pulled low). Re-armed every
+  // iteration rather than once at boot — the wakeup trigger appears to
+  // need a fresh disable/enable each cycle to keep firing reliably.
+  gpio_wakeup_disable(TOUCH_INT_PIN);
+  gpio_wakeup_enable(TOUCH_INT_PIN, GPIO_INTR_LOW_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+
+  // ...plus a short fallback nap so we still catch periodic refresh/slide
+  // timers, and so a missed GPIO wakeup doesn't leave touch feeling dead.
   esp_sleep_enable_timer_wakeup((uint64_t)TOUCH_POLL_MS * 1000ULL);
   esp_err_t slept = esp_light_sleep_start();
   if (slept != ESP_OK) {
@@ -129,7 +149,7 @@ void loop() {
     while (d.getTouch(&tp)) delay(30);       // wait for finger release
     if (nowMs() - t0 >= 1500) {
       showMessage("Refreshing...");
-      doRefresh();
+      doRefresh(true);       // long-press: manual refresh, re-fetch photo too
     } else {
       currentPage = (tx >= W / 2) ? nextPage(currentPage) : prevPage(currentPage);
       lastFlipMs = nowMs();
@@ -155,7 +175,7 @@ void loop() {
 
   // ---- Periodic data refresh ----
   if (t - lastFetchMs >= (int64_t)REFRESH_MIN * 60000) {
-    doRefresh();
+    doRefresh(false);        // periodic: refresh data but keep the current photo
     renderCurrentPage();
     return;
   }

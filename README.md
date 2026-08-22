@@ -19,17 +19,23 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 
 - **Slideshow**: flips to the next page every `SLIDE_MIN` minutes.
 - **Touch**: tap right half = next page, tap left half = previous page,
-  **long-press (~1.5 s) = re-fetch everything now**. Hold taps ~¼ s (the
-  device polls between light-sleep naps).
+  **long-press (~1.5 s) = re-fetch everything now**. The device sleeps
+  between touches and wakes on the touch controller's interrupt line
+  rather than polling it on a timer, so a quick, light flick can be
+  missed — hold each tap for a beat rather than a fast tap.
 - **Data refresh**: every `REFRESH_MIN` minutes over Wi-Fi (calendar +
   weather each time; news hourly, never repeating recent headlines; word
   of the day once per day).
 - **Quiet hours** (default 00:00–06:00): the device deep-sleeps for the
   night — the screen holds its last page, touch is inactive, and at the
   end hour it reboots and refreshes everything fresh.
-- **Battery**: light sleep between touch polls, deep sleep at night;
-  roughly 4–7 days per charge with default settings. Battery % is shown
-  top-right (voltage-based, so approximate — reads ~100% on USB).
+- **Battery**: light sleep between touches (woken by a GPIO interrupt on
+  the touch controller instead of constant polling), deep sleep at
+  night. Actual runtime depends heavily on your Wi-Fi/refresh settings
+  and hasn't been independently re-measured since this change — treat any
+  "days per charge" figure as unverified until you've tried it yourself.
+  Battery % is shown top-right (voltage-based, so approximate — reads
+  ~100% on USB).
 
 ## Setup
 
