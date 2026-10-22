@@ -25,22 +25,6 @@ int gNewsCount = 0;
 int gNewsSlot = -1;
 int64_t gLastNewsMs = 0;
 
-// Ring buffer of recently shown headlines, so refreshes bring new stories
-String gSeenNews[16];
-int gSeenPos = 0;
-
-bool newsSeen(const String& t) {
-  for (int i = 0; i < 16; i++) {
-    if (gSeenNews[i] == t) return true;
-  }
-  return false;
-}
-
-void rememberNews(const String& t) {
-  gSeenNews[gSeenPos] = t;
-  gSeenPos = (gSeenPos + 1) % 16;
-}
-
 // Word of the day (Jisho + Tatoeba, falls back to word_data.h)
 String gWotdWord, gWotdReading, gWotdMeaning, gWotdUsage, gWotdUsageEn, gWotdLevel;
 String gWotdUsageRuby;   // example with furigana markers: 漢字[かんじ]...

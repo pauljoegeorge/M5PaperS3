@@ -180,6 +180,21 @@ void loop() {
     return;
   }
 
+  // News has independent timers: cached rotation never starts Wi-Fi.
+  bool newsChanged = rotateNews();
+  if (newsNeedsFetch()) {
+    selectNewsSlot();
+    if (connectWiFi()) refreshNews();
+    else {
+      gNewsDebug = "News Wi-Fi connection failed";
+      gNewsAttemptSlot = currentNewsSlot();
+      gNewsNextFetchMs = nowMs() + (int64_t)NEWS_RETRY_MIN * 60000;
+    }
+    wifiOff();
+    newsChanged = true;
+  }
+  if (newsChanged && currentPage == PAGE_NEWS) renderCurrentPage();
+
   // ---- Slideshow auto-flip (paused during quiet hours) ----
   if (!quietHours() && t - lastFlipMs >= (int64_t)SLIDE_MIN * 60000) {
     currentPage = nextPage(currentPage);

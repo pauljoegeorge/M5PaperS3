@@ -13,21 +13,21 @@ static const char* CITY_NAME   = "Tokyo";
 static const float RAIN_MM_MIN        = 0.2f;  // an hour "has rain" at/above this (mm)
 static const float RAIN_FULL_SCALE_MM = 6.0f;  // rainfall that fills the chart bar height
 
-// ---- News (Google News RSS, source rotates by time of day) ----
-static const int TZ_OFFSET_HOURS = 9;     // JST; used for the clock + news slots
-static const int NEWS_REFRESH_MIN = 60;   // re-fetch headlines (minutes)
-
+// ---- News (schedule in JST; article dates filtered in GMT) ----
+static const int TZ_OFFSET_HOURS = 9;
+static const int NEWS_REFRESH_MIN = 60;
+static const int NEWS_ROTATE_MIN = 15;
+static const int NEWS_RETRY_MIN = 15;
 struct NewsSlot { int startHour; const char* label; const char* url; };
-// Must be sorted by startHour; the last slot wraps past midnight
+// Tech wraps past midnight; quiet hours still suspend all operations.
 static const NewsSlot NEWS_SLOTS[] = {
-  {  5, "Tech",
-     "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGRqTVhZU0JXVnVMVlZUR2dKVlV5Z0FQAQ?hl=en-US&gl=US&ceid=US:en" },
-  { 12, "Japan",
-     "https://news.google.com/rss/search?q=Japan&hl=en-US&gl=US&ceid=US:en" },
-  { 17, "World",
-     "https://news.google.com/rss/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JXVnVMVlZUR2dKVlV5Z0FQAQ?hl=en-US&gl=US&ceid=US:en" },
-  { 21, "India",
-     "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en" },
+  { 0, "Tech", "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en" },
+  {10, "Science", "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp0Y1RjU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en" },
+  {14, "Japan", "https://news.google.com/rss/search?q=Japan&hl=en-US&gl=US&ceid=US:en" },
+  {15, "Chennai", "https://news.google.com/rss/search?q=Chennai&hl=en-IN&gl=IN&ceid=IN:en" },
+  {17, "Kerala", "https://news.google.com/rss/search?q=Kerala&hl=en-IN&gl=IN&ceid=IN:en" },
+  {19, "India", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en" },
+  {20, "International", "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en" },
 };
 static const int NEWS_SLOT_COUNT = sizeof(NEWS_SLOTS) / sizeof(NEWS_SLOTS[0]);
 

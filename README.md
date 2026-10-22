@@ -8,12 +8,44 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 |---|---|---|
 | Calendar | Today's events (past events drop off as the day progresses) | Google Apps Script (your calendar) |
 | Weather | Current conditions, H/L, hourly temp curve + rain bars, sunrise/sunset | [Open-Meteo](https://open-meteo.com/) (no key) |
-| News | Top 2 headlines; feed rotates by time of day (tech / Japan / world / India) | Google News RSS |
+| News | 2 headlines per batch; 7 scheduled feeds, cached rotation every 15 minutes | Google News RSS |
 | Kotoba | JLPT N3/N2 word of the day with reading, meaning, and a furigana example sentence | [Jisho](https://jisho.org/) + [Tatoeba](https://tatoeba.org/) APIs, curated fallback list |
 | Countdown | Days remaining to upcoming dates | Calendar events titled `CNT: name` on their target date |
 | Message | Optional big decorated message | Calendar event titled `MSG: your text` |
 | Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English with the Japanese name below when recognized, else Japanese alone | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
 | Photo | Whatever image is newest in a Drive folder you control — drop in a new photo any time to change it | Google Drive, via the same Apps Script |
+
+## News schedule and cache
+
+All schedule times are JST: Tech until 10:00, Science 10:00–14:00,
+Japan 14:00–15:00, Chennai 15:00–17:00, Kerala 17:00–19:00,
+India 19:00–20:00, International from 20:00 until quiet hours.
+Quiet hours are configured as 23:00–06:00. Japan coverage is in English.
+
+The active RSS feed is streamed hourly and on category changes, independently
+of the 30-minute calendar/weather refresh. Long-press forces a news fetch too.
+Only articles published today or on the previous two GMT calendar dates qualify;
+missing/invalid dates and future timestamps are excluded. Articles are sorted
+newest first and deduplicated using normalized title and article identity hashes.
+Different headlines about the same event can still appear.
+
+Only the active category is cached: the newest 64 eligible articles, each title
+capped at 320 UTF-8 bytes. Two headlines rotate locally every 15 minutes and
+loop at the end (an odd final article appears alone). The five-minute dashboard
+slideshow and existing headline layout are unchanged; news rotation does not
+force navigation to News. Refreshes preserve the current article when possible.
+Caches reset on reboot. Failed requests retain eligible news from the same
+category and retry after 15 minutes; category changes clear the previous feed.
+
+Each fixed cache uses 22,528 bytes of PSRAM; refresh temporarily keeps two
+(45,056 bytes total), plus bounded parser strings and normal HTTP/TLS allocations.
+No full XML response or seven-feed cache is retained. Serial logs show internal
+heap, largest internal free block and PSRAM before/during/after news downloads.
+Runtime heap margin and battery impact still require on-device measurement.
+
+Host checks: `c++ -std=c++17 tests/news_test.cpp -o /tmp/news-test && /tmp/news-test`.
+These cover GMT dates, bounded selection, title hashes, UTF-8 truncation,
+two-item looping, and streaming parsing including large ignored descriptions.
 
 ## Behavior
 
@@ -24,9 +56,10 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
   rather than polling it on a timer, so a quick, light flick can be
   missed — hold each tap for a beat rather than a fast tap.
 - **Data refresh**: every `REFRESH_MIN` minutes over Wi-Fi (calendar +
-  weather each time; news hourly, never repeating recent headlines; word
+  weather each time; active news feed hourly and at category changes, cached
+  headlines rotate every 15 minutes and loop; word
   of the day once per day).
-- **Quiet hours** (default 00:00–06:00): the device deep-sleeps for the
+- **Quiet hours** (default 23:00–06:00): the device deep-sleeps for the
   night — the screen holds its last page, touch is inactive, and at the
   end hour it reboots and refreshes everything fresh.
 - **Battery**: light sleep between touches (woken by a GPIO interrupt on
