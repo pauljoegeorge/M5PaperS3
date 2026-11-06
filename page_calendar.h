@@ -1,5 +1,6 @@
 #pragma once
 #include "util.h"
+#include "calendar_core.h"
 
 // Minutes since local midnight for "HH:MM" strings, -1 if unparsable
 int parseHM(const String& s) {
@@ -11,8 +12,10 @@ int parseHM(const String& s) {
 // True once a timed event's end time has passed (all-day events never expire)
 bool eventEnded(JsonObject e, int nowMin) {
   if (e["allDay"] | false) return false;
+  int64_t endEpoch = e["endEpoch"] | (int64_t)0;
   int endMin = parseHM(e["end"] | "");
-  return endMin >= 0 && endMin <= nowMin;
+  int startMin = parseHM(e["start"] | "");
+  return calendarTimedEventEnded((int64_t)time(nullptr), endEpoch, nowMin, startMin, endMin);
 }
 
 void renderCalendar() {
@@ -25,20 +28,64 @@ void renderCalendar() {
     return;
   }
 
-  String date = calDoc["date"] | "Today";
-  drawHeader(date, "", false);   // title is already the date
+  time_t now = time(nullptr);
+  time_t local = now + (time_t)TZ_OFFSET_HOURS * 3600;
+  char todayISO[11], tomorrowISO[11];
+  strftime(todayISO, sizeof(todayISO), "%Y-%m-%d", gmtime(&local));
+  time_t next = local + 86400;
+  strftime(tomorrowISO, sizeof(tomorrowISO), "%Y-%m-%d", gmtime(&next));
+  int nowMin = (int)((local / 60) % 1440);
 
-  JsonArray events = calDoc["events"];
+  // Reuse yesterday's prefetched tomorrow as today after a failed refresh.
+  JsonObject day = calDoc.as<JsonObject>();
+  String iso = day["isoDate"] | "";
+  if (iso.length() && iso != todayISO) {
+    day = calDoc["tomorrow"].as<JsonObject>();
+    if (String(day["isoDate"] | "") != todayISO) {
+      drawHeader("Calendar", "", false);
+      drawCentered("Calendar data out of date", H / 2 - 20, &fonts::DejaVu24);
+      d.display();
+      return;
+    }
+  }
+  JsonArray events = day["events"].as<JsonArray>();
+  bool timedRemaining = false;
+  for (JsonObject e : events) {
+    String title = e["title"] | "";
+    if (title.startsWith("MSG:") || title.startsWith("CNT:")) continue;
+    if (!(e["allDay"] | false) && !eventEnded(e, nowMin)) timedRemaining = true;
+  }
+  JsonObject nextDay = calDoc["tomorrow"].as<JsonObject>();
+  bool tomorrowHasEvents = false;
+  if (String(nextDay["isoDate"] | "") == tomorrowISO &&
+      nextDay["events"].is<JsonArray>()) {
+    for (JsonObject e : nextDay["events"].as<JsonArray>()) {
+      String title = e["title"] | "";
+      if (!title.startsWith("MSG:") && !title.startsWith("CNT:")) {
+        tomorrowHasEvents = true;
+        break;
+      }
+    }
+  }
+  // Keep today's view when tomorrow is empty or unavailable.
+  bool tomorrow = calendarShowTomorrow(nowMin, CALENDAR_TOMORROW_HOUR,
+                                       timedRemaining, tomorrowHasEvents);
+  if (tomorrow) {
+    day = nextDay;
+    events = day["events"].as<JsonArray>();
+  }
+  String date = day["date"] | "Today";
+  drawHeader(tomorrow ? "Tomorrow" : date, tomorrow ? date : "", false);
 
-  // Hide events that have already ended, so later ones rise into view
-  int nowMin = (int)((time(nullptr) / 60 + (time_t)TZ_OFFSET_HOURS * 60) % 1440);
   int upcoming = 0;
   for (JsonObject e : events) {
-    if (!eventEnded(e, nowMin)) upcoming++;
+    String title = e["title"] | "";
+    if (title.startsWith("MSG:") || title.startsWith("CNT:")) continue;
+    if (tomorrow || !eventEnded(e, nowMin)) upcoming++;
   }
 
-  if (events.size() == 0) {
-    drawCentered("No events today", H / 2 - 40, &fonts::DejaVu40);
+  if (upcoming == 0 && (tomorrow || events.size() == 0)) {
+    drawCentered(tomorrow ? "No events tomorrow" : "No events today", H / 2 - 40, &fonts::DejaVu40);
     d.setTextColor(TFT_DARKGREY, TFT_WHITE);
     drawCentered("Enjoy your free day!", H / 2 + 20, &fonts::DejaVu24);
     d.setTextColor(TFT_BLACK, TFT_WHITE);
@@ -67,12 +114,14 @@ void renderCalendar() {
 
   for (JsonObject e : events) {
     if (shown >= maxRows) break;
-    if (eventEnded(e, nowMin)) continue;   // already over -> hide
+    String rawTitle = e["title"] | "";
+    if (rawTitle.startsWith("MSG:") || rawTitle.startsWith("CNT:")) continue;
+    if (!tomorrow && eventEnded(e, nowMin)) continue;
 
-    String title    = stripEmoji(e["title"]    | "");
+    String title    = emojiText(e["title"]    | "");
     String start    = e["start"]    | "";
     String end      = e["end"]      | "";
-    String location = stripEmoji(e["location"] | "");
+    String location = emojiText(e["location"] | "");
     String calTag   = stripEmoji(e["cal"]      | "");
     bool allDay     = e["allDay"]   | false;
     title.replace("\n", " ");
@@ -111,13 +160,13 @@ void renderCalendar() {
 
     // Title (drawString never wraps — always a single line)
     d.setFont(&fonts::DejaVu40);
-    d.drawString(fitText(title, tagLeft - textX - 20), textX, y + 2);
+    drawEmojiText(fitEmojiText(title, tagLeft - textX - 20), textX, y + 2);
 
     // Location
     if (location.length()) {
       d.setFont(&fonts::DejaVu18);
       d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-      d.drawString(fitText(location, W - textX - 60), textX, y + 48);
+      drawEmojiText(fitEmojiText(location, W - textX - 60), textX, y + 48, TFT_DARKGREY);
       d.setTextColor(TFT_BLACK, TFT_WHITE);
     }
 

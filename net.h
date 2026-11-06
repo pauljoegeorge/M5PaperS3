@@ -63,28 +63,7 @@ String weatherUrl() {
   return u;
 }
 
-String decodeEntities(String s) {
-  s.replace("&amp;", "&");
-  s.replace("&lt;", "<");
-  s.replace("&gt;", ">");
-  s.replace("&quot;", "\"");
-  s.replace("&#39;", "'");
-  s.replace("&apos;", "'");
-  return s;
-}
-
-String cleanTitle(String t) {
-  if (t.startsWith("<![CDATA[")) {
-    t = t.substring(9);
-    t.replace("]]>", "");
-  }
-  t = stripEmoji(decodeEntities(t));
-  t.replace("\n", " ");
-  int dash = t.lastIndexOf(" - ");
-  if (dash > 10) t = t.substring(0, dash);    // drop " - Source Name" suffix
-  t.trim();
-  return t;
-}
+#include "news_text.h"
 
 #include "news_core.h"
 

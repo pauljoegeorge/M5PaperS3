@@ -6,13 +6,13 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 
 | Page | Content | Data source |
 |---|---|---|
-| Calendar | Today's events (past events drop off as the day progresses) | Google Apps Script (your calendar) |
+| Calendar | Today's remaining events; tomorrow after 18:00 JST once all timed events end | Google Apps Script (your calendar) |
 | Weather | Current conditions, H/L, hourly temp curve + rain bars, sunrise/sunset | [Open-Meteo](https://open-meteo.com/) (no key) |
 | News | 2 headlines per batch; 7 scheduled feeds, cached rotation every 15 minutes | Google News RSS |
 | Kotoba | JLPT N3/N2 word of the day with reading, meaning, and a furigana example sentence | [Jisho](https://jisho.org/) + [Tatoeba](https://tatoeba.org/) APIs, curated fallback list |
 | Countdown | Days remaining to upcoming dates | Calendar events titled `CNT: name` on their target date |
 | Message | Optional big decorated message | Calendar event titled `MSG: your text` |
-| Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name shown in English with the Japanese name below when recognized, else Japanese alone | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
+| Earthquake | Takes over the screen after a recent M3+ quake in Japan (shows the biggest by magnitude if several occurred in the window); epicenter name uses an exact official JMA English lookup with Japanese below; unknown names stay Japanese; long English names fit on up to two lines | [P2PQuake](https://www.p2pquake.net/) (JMA reports) |
 | Photo | Whatever image is newest in a Drive folder you control — drop in a new photo any time to change it | Google Drive, via the same Apps Script |
 
 ## News schedule and cache
@@ -28,6 +28,10 @@ Only articles published today or on the previous two GMT calendar dates qualify;
 missing/invalid dates and future timestamps are excluded. Articles are sorted
 newest first and deduplicated using normalized title and article identity hashes.
 Different headlines about the same event can still appear.
+Headline punctuation is normalized for the compact display fonts: curly quotes
+become straight quotes, long dashes become hyphens, and ellipses become three
+periods. Named and decimal/hex numeric HTML entities are decoded before display.
+Text truncation preserves complete UTF-8 characters.
 
 Only the active category is cached: the newest 64 eligible articles, each title
 capped at 320 UTF-8 bytes. Two headlines rotate locally every 15 minutes and
@@ -114,10 +118,34 @@ like this for today's events:
 }
 ```
 
-Put the deployment URL (ends in `/exec`) in `secrets.h`. The
-`countdowns` array comes from
-[apps_script_countdowns.gs](apps_script_countdowns.gs) — add its
-function to your script and call it in the payload.
+### Evening preview (requires feed update)
+
+The calendar switches to **Tomorrow** only at/after 18:00 JST **and** once
+all of today's timed events have ended, and tomorrow has at least one visible
+event. Future evening events block the switch,
+even during gaps between appointments. All-day events do not block it. Before
+18:00, an empty/finished day keeps its existing message. Tomorrow's full list
+is shown without filtering by today's clock. If tomorrow is empty (or contains
+only hidden `MSG:`/`CNT:` entries), today's view stays on screen, including its
+existing finished/empty-day message. The change appears on the next calendar render (slideshow, refresh,
+or touch). `CALENDAR_TOMORROW_HOUR` in `config.h` controls the cutoff.
+
+The deployed Google Apps Script must use JST day boundaries, include `isoDate`
+(`YYYY-MM-DD`) and numeric `endEpoch` (Unix seconds) in today's data, and return
+a `tomorrow` object with
+its own `date`, `isoDate`, and `events`. Absolute end times handle overnight
+and multi-day events. Missing or stale tomorrow data also keeps today's view. Explicit dates reject stale days; yesterday's prefetched tomorrow
+can still serve as today's list if a refresh fails. Legacy feeds still show
+today, but must be upgraded for tomorrow's preview and date validation.
+Tomorrow's `MSG:`/`CNT:` entries are hidden and do not activate special pages.
+
+Host checks (from the repository root):
+`c++ -std=c++17 m5papers3_calendar/tests/calendar_test.cpp -o /tmp/calendar-test && /tmp/calendar-test`
+The Apps Script lives in the Google Apps Script project; no local `.gs` files
+are required by the firmware.
+
+Put the deployment URL (ends in `/exec`) in `secrets.h`. The deployed script
+returns the `countdowns` array using its existing `getCountdowns()` function.
 
 ### 4. Photo page (optional)
 
@@ -180,8 +208,7 @@ re-flashing needed; changes appear within one refresh.
 - `MSG: You can do it!!` (an event today) — decorated message page.
 - `CNT: India trip` — countdown page. Create it as an all-day event **on
   the target date itself** (lookahead window set by `COUNTDOWN_DAYS` in
-  the Apps Script, default 30 days); requires the
-  [apps_script_countdowns.gs](apps_script_countdowns.gs) addition. Up to
+  the Apps Script, default 30 days), returned by `getCountdowns()`. Up to
   4 countdowns, sorted soonest-first, gone once the date passes. (Legacy
   form also works without the script change: an event *today* titled
   `CNT: name / YYYY-MM-DD`.)
@@ -199,8 +226,7 @@ util.h                     shared globals, drawing/text helpers
 net.h                      WiFi + all data fetching/parsing
 page_*.h                   one file per page
 word_data.h                fallback N3/N2 word list
-place_names.h              JMA hypocenter name -> English lookup (earthquake page)
-apps_script_countdowns.gs  Apps Script addition for the countdown page
+place_names.h              Generated exact JMA epicenter-name lookup (earthquake page)
 secrets.h                  credentials (gitignored — create your own)
 ```
 
@@ -209,8 +235,12 @@ To add a page: write `page_foo.h` with a `renderFoo()`, include it in the
 
 ## Notes & limitations
 
-- Fonts cover Latin + Japanese. Emoji are stripped from all displayed
-  text (no emoji glyphs on e-ink).
+- Calendar event titles/locations, countdown names, and messages support
+  🎂 ✈️ ❤️ 🎉 🏠 😄 as small monochrome drawings, scaled to the active font.
+  Plane and heart also work without the emoji variation selector. Other
+  emoji are stripped; fonts otherwise cover Latin + Japanese. Calendar
+  labels and other pages retain the existing text rendering.
+  Host rendering checks: `python3 m5papers3_calendar/tests/emoji_test.py`.
 - Earthquake alerts poll at the refresh interval — this is recent quake
   info, **not** an early warning system.
 - Epicenter English names are composed from a static table of Japan's 47
@@ -222,3 +252,29 @@ To add a page: write `page_foo.h` with a `renderFoo()`, include it in the
   to appear. Requires PSRAM enabled in board settings.
 - Re-flashing: if an upload fails to start, press the reset button as the
   upload begins (light sleep can make the USB port drowsy).
+
+### Earthquake location names
+
+The offline lookup contains 343 exact Japanese–English names from [JMA’s
+multilingual epicenter dictionary](https://www.data.jma.go.jp/multi/data/dictionary/epi.json),
+retrieved on 2026-11-06. It includes inland, offshore, island, bay, and overseas
+regions. Names are matched in full; unknown names retain the original Japanese
+rather than receiving an inferred English translation. No translation request
+is made when an earthquake is displayed. Long English labels use a smaller
+font and, when needed, two lines; Japanese remains visible below.
+
+The source snapshot and retrieval date are in `data/jma_epicenters.json`.
+To refresh it, download the linked JMA dictionary, replace `names` with its
+`japanese`/`english` pairs, update `retrieved`, then run
+`python3 tools/generate_place_names.py` from the sketch directory. The generator
+removes invisible zero-width spaces used in the web dictionary but preserves
+JMA’s wording. Commit the snapshot and generated header together.
+
+Host check: `c++ -std=c++17 tests/place_names_test.cpp -o /tmp/place-names-test && /tmp/place-names-test`.
+
+Earthquakes are also checked independently every **5 minutes** while awake.
+Change `EQ_CHECK_MIN` in `config.h` to adjust this interval (positive minutes).
+These checks fetch only earthquake data, turn Wi-Fi off afterward, and redraw
+only when an alert changes or expires on screen. Regular full refreshes also
+check earthquakes and restart this timer, avoiding a duplicate check. Failed
+attempts wait for the next interval. Quiet hours still suspend all checks.

@@ -33,7 +33,7 @@ void renderMessage() {
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 
   // Message text: pick the biggest font that fits in 3 lines
-  String msg = stripEmoji(gMessage);
+  String msg = emojiText(gMessage);
   const int maxW = W - 240;
   String lines[4];
   d.setFont(&fonts::DejaVu72);
@@ -44,9 +44,10 @@ void renderMessage() {
   int lh = d.fontHeight() + 16;
   int y = H / 2 - (n * lh) / 2 + 6;
   d.setTextColor(TFT_BLACK, TFT_WHITE);
-  d.setTextDatum(top_center);
+  d.setTextDatum(top_left);
   for (int i = 0; i < n; i++) {
-    d.drawString(lines[i], W / 2, y + i * lh);
+    String line = fitEmojiText(lines[i], maxW);
+    drawEmojiText(line, (W - emojiTextWidth(line)) / 2, y + i * lh);
   }
   d.setTextDatum(top_left);
 

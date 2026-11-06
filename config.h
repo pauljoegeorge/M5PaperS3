@@ -38,6 +38,8 @@ static const int QUIET_END_HOUR   = 6;
 // ---- Earthquake alerts (P2PQuake public API, covers JMA reports) ----
 static const float EQ_MIN_MAG    = 3.0f;  // alert on magnitude >= this
 static const int   EQ_WINDOW_MIN = 60;    // ...that happened within the last N minutes
+static const int   EQ_CHECK_MIN  = 5;     // earthquake-only Wi-Fi check interval (minutes)
+static_assert(EQ_CHECK_MIN > 0, "EQ_CHECK_MIN must be positive");
 
 // ---- Photo page ----
 // How much to zoom into the photo: 0.0 = show the whole image, letterboxed
@@ -46,6 +48,9 @@ static const int   EQ_WINDOW_MIN = 60;    // ...that happened within the last N 
 // blend the two — a partial zoom that shows more letterbox-free area
 // without cropping as aggressively as full cover.
 static const float PHOTO_FILL = 0.3f;
+
+// ---- Calendar ----
+static const int CALENDAR_TOMORROW_HOUR = 18; // JST; also wait for all timed events to end
 
 // ---- Timing ----
 static const int REFRESH_MIN  = 30;     // re-fetch calendar + weather (minutes)

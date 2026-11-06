@@ -46,22 +46,57 @@ void renderQuake() {
   d.fillRect(60, 310, W - 120, 2, TFT_BLACK);
 
   // Epicenter: English (when recognized) with Japanese below; else Japanese alone
-  String placeEn = translatePlaceName(gQuakePlace);
+  String placeEn = quakePlaceEnglish(gQuakePlace.c_str());
   bool haveEn = placeEn.length() > 0;
 
-  d.setFont(haveEn ? (const lgfx::IFont*)&fonts::DejaVu40 : (const lgfx::IFont*)&fonts::lgfxJapanGothic_40);
-  d.drawString(haveEn ? placeEn : gQuakePlace, 80, 330);
+  const int placeWidth = W - 160;
+  String place = haveEn ? placeEn : gQuakePlace;
+  if (!place.length()) place = "Location unavailable";
+  d.setFont(haveEn || !gQuakePlace.length()
+              ? (const lgfx::IFont*)&fonts::DejaVu40
+              : (const lgfx::IFont*)&fonts::lgfxJapanGothic_40);
+  d.setTextSize(1);
+  // Long English labels use two balanced lines at a smaller readable size.
+  // Fit unusually long/unknown labels without dropping geographic details.
+  int placePixels = d.textWidth(place);
+  String secondLine;
+  if (haveEn && placePixels > placeWidth) {
+    d.setFont(&fonts::DejaVu24);
+    placePixels = d.textWidth(place);
+    if (placePixels > placeWidth) {
+      int bestSplit = -1, bestWidth = placePixels;
+      for (int i = 0; i < (int)place.length(); ++i) {
+        if (place[i] != ' ') continue;
+        int left = d.textWidth(place.substring(0, i));
+        int right = d.textWidth(place.substring(i + 1));
+        int width = left > right ? left : right;
+        if (width < bestWidth) { bestSplit = i; bestWidth = width; }
+      }
+      if (bestSplit >= 0) {
+        secondLine = place.substring(bestSplit + 1);
+        place = place.substring(0, bestSplit);
+        placePixels = bestWidth;
+      }
+    }
+  }
+  if (placePixels > placeWidth) d.setTextSize((float)placeWidth / placePixels);
+  d.drawString(place, 80, 330);
+  if (secondLine.length()) d.drawString(secondLine, 80, 362);
+  d.setTextSize(1);
 
   if (haveEn) {
     d.setFont(&fonts::lgfxJapanGothic_24);
     d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-    d.drawString(gQuakePlace, 80, 378);
+    int jpPixels = d.textWidth(gQuakePlace);
+    if (jpPixels > placeWidth) d.setTextSize((float)placeWidth / jpPixels);
+    d.drawString(gQuakePlace, 80, secondLine.length() ? 397 : 378);
+    d.setTextSize(1);
     d.setTextColor(TFT_BLACK, TFT_WHITE);
   }
 
   d.setFont(&fonts::DejaVu24);
   d.setTextColor(TFT_DARKGREY, TFT_WHITE);
-  d.drawString(gQuakeTime + " JST    source: P2PQuake / JMA", 80, 430);
+  d.drawString(gQuakeTime + " JST    source: P2PQuake / JMA", 80, 450);
   d.setTextColor(TFT_BLACK, TFT_WHITE);
 
   d.display();

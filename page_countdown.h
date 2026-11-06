@@ -27,7 +27,7 @@ void renderCountdown() {
 
     // Name + target date
     d.setFont(&fonts::DejaVu40);
-    d.drawString(fitText(stripEmoji(gCntName[i]), W - 260 - 40), 260, y + 8);
+    drawEmojiText(fitEmojiText(emojiText(gCntName[i]), W - 260 - 40), 260, y + 8);
     d.setFont(&fonts::DejaVu18);
     d.setTextColor(TFT_DARKGREY, TFT_WHITE);
     d.drawString(gCntDate[i], 260, y + 58);

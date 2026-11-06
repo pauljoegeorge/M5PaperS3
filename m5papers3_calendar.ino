@@ -52,6 +52,7 @@ Page pageOrder[8];
 int  pageCount = 0;
 
 int64_t lastFetchMs = 0;
+int64_t lastQuakeCheckMs = 0;
 int64_t lastFlipMs  = 0;
 String  shownQuakeTime;   // which quake we already jumped to
 
@@ -106,7 +107,37 @@ void doRefresh(bool manual) {
     currentPage = pageOrder[0];        // current page left the rotation
   }
   lastFetchMs = nowMs();
+  lastQuakeCheckMs = lastFetchMs;  // full refresh already attempts the quake check
   lastFlipMs  = nowMs();
+}
+
+// Poll only earthquake data. Leave the e-ink screen alone when unchanged.
+void refreshQuakesOnly() {
+  bool wasActive = gQuakeActive;
+  float oldMag = gQuakeMag;
+  int oldScale = gQuakeScale;
+  String oldPlace = gQuakePlace, oldTime = gQuakeTime;
+  if (connectWiFi()) checkQuakes();
+  wifiOff();
+  // Count failed attempts too, so an outage doesn't cause rapid Wi-Fi retries.
+  lastQuakeCheckMs = nowMs();
+
+  bool changed = wasActive != gQuakeActive ||
+      (gQuakeActive && (oldMag != gQuakeMag || oldScale != gQuakeScale ||
+                       oldPlace != gQuakePlace || oldTime != gQuakeTime));
+  if (!changed) return;
+  bool wasQuakePage = currentPage == PAGE_QUAKE;
+  buildPageList();
+  if (gQuakeActive) {
+    currentPage = PAGE_QUAKE;
+    shownQuakeTime = gQuakeTime;
+  } else if (wasQuakePage) {
+    currentPage = pageOrder[0];
+  }
+  if (gQuakeActive || wasQuakePage) {
+    renderCurrentPage();
+    lastFlipMs = nowMs();
+  }
 }
 
 void setup() {
@@ -177,6 +208,12 @@ void loop() {
   if (t - lastFetchMs >= (int64_t)REFRESH_MIN * 60000) {
     doRefresh(false);        // periodic: refresh data but keep the current photo
     renderCurrentPage();
+    return;
+  }
+
+  // Earthquake checks have their own interval; quiet hours returned above.
+  if (t - lastQuakeCheckMs >= (int64_t)EQ_CHECK_MIN * 60000) {
+    refreshQuakesOnly();
     return;
   }
 

@@ -136,11 +136,13 @@ String stripEmoji(const String& s) {
   return out;
 }
 
+#include "emoji_text.h"
+
 // Truncate a string with "..." so it fits within maxWidth in the current font
 String fitText(const String& s, int maxWidth) {
   if (d.textWidth(s) <= maxWidth) return s;
   String t = s;
-  while (t.length() > 1 && d.textWidth(t + "...") > maxWidth) t.remove(t.length() - 1);
+  while (t.length() && d.textWidth(t + "...") > maxWidth) emojiPop(t);
   return t + "...";
 }
 
@@ -153,7 +155,7 @@ int wrapMessage(const String& msg, int maxW, String* lines, int maxLines) {
     int sp = msg.indexOf(' ', start);
     String word = (sp < 0) ? msg.substring(start) : msg.substring(start, sp);
     String cand = cur.length() ? cur + " " + word : word;
-    if (!cur.length() || d.textWidth(cand) <= maxW) cur = cand;
+    if (!cur.length() || emojiTextWidth(cand) <= maxW) cur = cand;
     else { lines[n++] = cur; cur = word; }
     if (sp < 0) break;
     start = sp + 1;

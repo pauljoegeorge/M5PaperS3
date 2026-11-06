@@ -9,6 +9,23 @@ class String {
  public:
   String() = default;
   String(const char* p): s(p) {}
+  String(std::string p): s(p) {}
+  char operator[](size_t i) const { return s[i]; }
+  void replace(const char* a, const char* b) {
+    size_t i=0; while ((i=s.find(a,i))!=std::string::npos) {
+      s.replace(i,strlen(a),b); i+=strlen(b);
+    }
+  }
+  String substring(size_t a) const { return s.substr(a); }
+  String substring(size_t a,size_t b) const { return s.substr(a,b-a); }
+  int lastIndexOf(const char* p) const {
+    auto i=s.rfind(p); return i==std::string::npos ? -1 : (int)i;
+  }
+  void trim() {
+    auto a=s.find_first_not_of(" \r\n\t");
+    if(a==std::string::npos) {s.clear();return;}
+    s=s.substr(a,s.find_last_not_of(" \r\n\t")-a+1);
+  }
   void reserve(size_t n) { s.reserve(n); }
   size_t length() const { return s.size(); }
   const char* c_str() const { return s.c_str(); }
@@ -25,9 +42,18 @@ class Stream {
   virtual int read() = 0;
   virtual int peek() = 0;
 };
-String cleanTitle(String s) { return s; }
+String stripEmoji(String s) { return s; }
+#include "../news_text.h"
 #include "../news_rss.h"
 int main() {
+  assert(cleanTitle("It’s ‘quoted’ — “news”…") == "It's 'quoted' - \"news\"...");
+  assert(cleanTitle("It&#8217;s &#x2018;quoted&#X2019; &mdash; &ldquo;news&rdquo;&hellip;") ==
+         "It's 'quoted' - \"news\"...");
+  assert(cleanTitle("Rock &amp; roll &apos;yes&apos; &#39;ok&#39;") == "Rock & roll 'yes' 'ok'");
+  assert(cleanTitle("A&nbsp;B&#160;C&#x202F;D") == "A B C D");
+  assert(cleanTitle("日本語 &#x65E5;") == "日本語 日");
+  assert(decodeEntities("&#xD800; &#0; &#x110000; &#bad;") == "&#xD800; &#0; &#x110000; &#bad;");
+
   auto now = newsPubDate("Thu, 22 Oct 2026 12:00:00 GMT");
   assert(now == 1792670400);
   assert(newsPubDate("Thu, 31 Feb 2026 12:00:00 GMT") == 0);
@@ -76,6 +102,12 @@ int main() {
   for (size_t i = 0; i < repeated.size(); i += 7)
     duplicates.write((const uint8_t*)repeated.data() + i, std::min(size_t(7), repeated.size() - i));
   assert(duplicates.count == 2 && duplicates.complete);
+  RssNewsSink punctuation(articles);
+  std::string quotes = "<rss><item><title><![CDATA[It’s “news”… &amp; &#x2018;quotes&#8217;]]></title><pubDate>" +
+      std::string(date) + "</pubDate></item></rss>";
+  punctuation.write((const uint8_t*)quotes.data(), quotes.size());
+  assert(punctuation.complete && punctuation.count == 1);
+  assert(std::string(articles[0].title) == "It's \"news\"... & 'quotes'");
   RssNewsSink truncated(articles);
   const char* broken = "<rss><item><title>Broken";
   truncated.write((const uint8_t*)broken, strlen(broken));
