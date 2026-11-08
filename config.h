@@ -50,7 +50,7 @@ static_assert(EQ_CHECK_MIN > 0, "EQ_CHECK_MIN must be positive");
 static const float PHOTO_FILL = 0.3f;
 
 // ---- Calendar ----
-static const int CALENDAR_TOMORROW_HOUR = 18; // JST; also wait for all timed events to end
+static const int CALENDAR_TOMORROW_HOUR = 18; // JST; also wait for all today's visible events to end
 
 // ---- Timing ----
 static const int REFRESH_MIN  = 30;     // re-fetch calendar + weather (minutes)

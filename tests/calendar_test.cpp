@@ -4,6 +4,9 @@
 int main() {
   assert(!calendarShowTomorrow(17 * 60 + 59, 18, false, true));
   assert(calendarShowTomorrow(18 * 60, 18, false, true));
+  // A visible all-day event remains active throughout today and blocks tomorrow.
+  assert(!calendarEventEnded(true, 200, 100, 23 * 60 + 59, 0, 0));
+  assert(!calendarShowTomorrow(23 * 60 + 59, 18, true, true));
   assert(!calendarShowTomorrow(18 * 60, 18, true, true));
   assert(!calendarShowTomorrow(20 * 60 + 29, 18, true, true));
   assert(calendarShowTomorrow(20 * 60 + 30, 18, false, true));

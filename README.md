@@ -6,7 +6,7 @@ An e-ink desk dashboard for the [M5Paper S3](https://shop.m5stack.com/products/m
 
 | Page | Content | Data source |
 |---|---|---|
-| Calendar | Today's remaining events; tomorrow after 18:00 JST once all timed events end | Google Apps Script (your calendar) |
+| Calendar | Today's remaining events; tomorrow after 18:00 JST once no events remain today | Google Apps Script (your calendar) |
 | Weather | Current conditions, H/L, hourly temp curve + rain bars, sunrise/sunset | [Open-Meteo](https://open-meteo.com/) (no key) |
 | News | 2 headlines per batch; 7 scheduled feeds, cached rotation every 15 minutes | Google News RSS |
 | Kotoba | JLPT N3/N2 word of the day with reading, meaning, and a furigana example sentence | [Jisho](https://jisho.org/) + [Tatoeba](https://tatoeba.org/) APIs, curated fallback list |
@@ -121,9 +121,9 @@ like this for today's events:
 ### Evening preview (requires feed update)
 
 The calendar switches to **Tomorrow** only at/after 18:00 JST **and** once
-all of today's timed events have ended, and tomorrow has at least one visible
+no visible events remain today, and tomorrow has at least one visible
 event. Future evening events block the switch,
-even during gaps between appointments. All-day events do not block it. Before
+even during gaps between appointments. All-day events keep today's view through midnight. Before
 18:00, an empty/finished day keeps its existing message. Tomorrow's full list
 is shown without filtering by today's clock. If tomorrow is empty (or contains
 only hidden `MSG:`/`CNT:` entries), today's view stays on screen, including its

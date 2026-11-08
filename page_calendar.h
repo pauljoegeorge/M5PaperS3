@@ -11,11 +11,11 @@ int parseHM(const String& s) {
 
 // True once a timed event's end time has passed (all-day events never expire)
 bool eventEnded(JsonObject e, int nowMin) {
-  if (e["allDay"] | false) return false;
+  bool allDay = e["allDay"] | false;
   int64_t endEpoch = e["endEpoch"] | (int64_t)0;
   int endMin = parseHM(e["end"] | "");
   int startMin = parseHM(e["start"] | "");
-  return calendarTimedEventEnded((int64_t)time(nullptr), endEpoch, nowMin, startMin, endMin);
+  return calendarEventEnded(allDay, (int64_t)time(nullptr), endEpoch, nowMin, startMin, endMin);
 }
 
 void renderCalendar() {
@@ -49,11 +49,11 @@ void renderCalendar() {
     }
   }
   JsonArray events = day["events"].as<JsonArray>();
-  bool timedRemaining = false;
+  bool todayHasEventsRemaining = false;
   for (JsonObject e : events) {
     String title = e["title"] | "";
     if (title.startsWith("MSG:") || title.startsWith("CNT:")) continue;
-    if (!(e["allDay"] | false) && !eventEnded(e, nowMin)) timedRemaining = true;
+    if (!eventEnded(e, nowMin)) todayHasEventsRemaining = true;
   }
   JsonObject nextDay = calDoc["tomorrow"].as<JsonObject>();
   bool tomorrowHasEvents = false;
@@ -69,7 +69,7 @@ void renderCalendar() {
   }
   // Keep today's view when tomorrow is empty or unavailable.
   bool tomorrow = calendarShowTomorrow(nowMin, CALENDAR_TOMORROW_HOUR,
-                                       timedRemaining, tomorrowHasEvents);
+                                       todayHasEventsRemaining, tomorrowHasEvents);
   if (tomorrow) {
     day = nextDay;
     events = day["events"].as<JsonArray>();
